@@ -50,13 +50,16 @@ export class CLIPrintProvider implements LLMProvider {
             proc.stdin.end();
 
             let stderrBuf = "";
+            let stdoutBuf = "";
             proc.stderr?.on("data", (chunk: Buffer) => {
               stderrBuf += chunk.toString();
             });
 
             // Stream stdout chunks as text SSE events
             proc.stdout?.on("data", (chunk: Buffer) => {
-              controller.enqueue(sseEvent("text", chunk.toString()));
+              const text = chunk.toString();
+              stdoutBuf += text;
+              controller.enqueue(sseEvent("text", text));
             });
 
             const code = await new Promise<number>((resolve, reject) => {
@@ -65,6 +68,13 @@ export class CLIPrintProvider implements LLMProvider {
             });
 
             if (code !== 0) {
+              const stdoutSummary = stdoutBuf.trim().slice(0, 500);
+              if (stdoutSummary) {
+                console.error(
+                  "[cli-print-provider] stdout on failure:",
+                  stdoutSummary,
+                );
+              }
               const errMsg =
                 stderrBuf.trim() || `claude exited with code ${code}`;
               console.error("[cli-print-provider] Error:", errMsg);

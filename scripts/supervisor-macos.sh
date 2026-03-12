@@ -28,6 +28,13 @@ build_env_dict() {
       ;; esac
   done < <(env)
 
+  # Forward proxy vars (needed for claude --print to reach Anthropic API)
+  for var in HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy NO_PROXY no_proxy; do
+    local val="${!var:-}"
+    [ -z "$val" ] && continue
+    dict+="${indent}<key>${var}</key>\n${indent}<string>${val}</string>\n"
+  done
+
   # Forward runtime-specific API keys
   local runtime
   runtime=$(grep "^CTI_RUNTIME=" "$CTI_HOME/config.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "'" | tr -d '"' || true)
