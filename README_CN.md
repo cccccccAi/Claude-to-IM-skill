@@ -33,7 +33,7 @@ Claude Code / Codex → 读写你的代码库
 ## 前置要求
 
 - **Node.js >= 20**
-- **Claude Code CLI**（`CTI_RUNTIME=claude` 或 `auto` 时需要）— 已安装并完成认证（`claude` 命令可用）
+- **Claude Code CLI**（`CTI_RUNTIME=claude`、`auto` 或 `cli-print` 时需要）— 已安装并完成认证（`claude` 命令可用）
 - **Codex CLI**（`CTI_RUNTIME=codex` 或 `auto` 时需要）— `npm install -g @openai/codex`。鉴权：运行 `codex auth login`，或设置 `OPENAI_API_KEY`（可选，API 模式）
 
 ## 安装
@@ -41,13 +41,14 @@ Claude Code / Codex → 读写你的代码库
 ### npx skills（推荐）
 
 ```bash
-npx skills add op7418/Claude-to-IM-skill
+npx skills add cccccccAi/Claude-to-IM-skill
 ```
 
 ### Git 克隆
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/.claude/skills/claude-to-im
+git clone https://github.com/cccccccAi/Claude-to-IM-skill.git ~/.claude/skills/claude-to-im
+cd ~/.claude/skills/claude-to-im && npm install && npm run build
 ```
 
 将仓库直接克隆到个人 Skills 目录，Claude Code 会自动发现。
@@ -57,7 +58,8 @@ git clone https://github.com/op7418/Claude-to-IM-skill.git ~/.claude/skills/clau
 如果你想把仓库放在其他位置（比如方便开发）：
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
+git clone https://github.com/cccccccAi/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
+cd ~/code/Claude-to-IM-skill && npm install && npm run build
 mkdir -p ~/.claude/skills
 ln -s ~/code/Claude-to-IM-skill ~/.claude/skills/claude-to-im
 ```
@@ -67,14 +69,14 @@ ln -s ~/code/Claude-to-IM-skill ~/.claude/skills/claude-to-im
 如果你使用 [Codex](https://github.com/openai/codex)，直接克隆到 Codex skills 目录：
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/.codex/skills/claude-to-im
+git clone https://github.com/cccccccAi/Claude-to-IM-skill.git ~/.codex/skills/claude-to-im
 ```
 
 或使用提供的安装脚本，自动安装依赖并构建：
 
 ```bash
 # 克隆并安装（复制模式）
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
+git clone https://github.com/cccccccAi/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
 bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh
 
 # 或使用符号链接模式（方便开发）
@@ -120,16 +122,16 @@ bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh --link
 
 所有命令在 Claude Code 或 Codex 中执行：
 
-| Claude Code | Codex（自然语言） | 说明 |
-|---|---|---|
-| `/claude-to-im setup` | "claude-to-im setup" / "配置" | 交互式配置向导 |
-| `/claude-to-im start` | "start bridge" / "启动桥接" | 启动桥接守护进程 |
-| `/claude-to-im stop` | "stop bridge" / "停止桥接" | 停止守护进程 |
-| `/claude-to-im status` | "bridge status" / "状态" | 查看运行状态 |
-| `/claude-to-im logs` | "查看日志" | 查看最近 50 行日志 |
-| `/claude-to-im logs 200` | "logs 200" | 查看最近 200 行日志 |
-| `/claude-to-im reconfigure` | "reconfigure" / "修改配置" | 交互式修改配置 |
-| `/claude-to-im doctor` | "doctor" / "诊断" | 诊断问题 |
+| Claude Code                 | Codex（自然语言）             | 说明                |
+| --------------------------- | ----------------------------- | ------------------- |
+| `/claude-to-im setup`       | "claude-to-im setup" / "配置" | 交互式配置向导      |
+| `/claude-to-im start`       | "start bridge" / "启动桥接"   | 启动桥接守护进程    |
+| `/claude-to-im stop`        | "stop bridge" / "停止桥接"    | 停止守护进程        |
+| `/claude-to-im status`      | "bridge status" / "状态"      | 查看运行状态        |
+| `/claude-to-im logs`        | "查看日志"                    | 查看最近 50 行日志  |
+| `/claude-to-im logs 200`    | "logs 200"                    | 查看最近 200 行日志 |
+| `/claude-to-im reconfigure` | "reconfigure" / "修改配置"    | 交互式修改配置      |
+| `/claude-to-im doctor`      | "doctor" / "诊断"             | 诊断问题            |
 
 ## 平台配置指南
 
@@ -188,19 +190,19 @@ bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh --link
 
 ### 核心组件
 
-| 组件 | 职责 |
-|---|---|
-| `src/main.ts` | 守护进程入口，组装依赖注入，启动 bridge |
-| `src/config.ts` | 加载/保存 `config.env`，映射为 bridge 设置 |
-| `src/store.ts` | JSON 文件 BridgeStore（30 个方法，写穿缓存） |
-| `src/llm-provider.ts` | Claude Agent SDK `query()` → SSE 流 |
-| `src/codex-provider.ts` | Codex SDK `runStreamed()` → SSE 流 |
-| `src/sse-utils.ts` | 共享的 SSE 格式化辅助函数 |
-| `src/permission-gateway.ts` | 异步桥接：SDK `canUseTool` ↔ IM 按钮 |
-| `src/logger.ts` | 密钥脱敏的文件日志，支持轮转 |
-| `scripts/daemon.sh` | 进程管理（start/stop/status/logs） |
-| `scripts/doctor.sh` | 诊断检查 |
-| `SKILL.md` | Claude Code Skill 定义文件 |
+| 组件                        | 职责                                         |
+| --------------------------- | -------------------------------------------- |
+| `src/main.ts`               | 守护进程入口，组装依赖注入，启动 bridge      |
+| `src/config.ts`             | 加载/保存 `config.env`，映射为 bridge 设置   |
+| `src/store.ts`              | JSON 文件 BridgeStore（30 个方法，写穿缓存） |
+| `src/llm-provider.ts`       | Claude Agent SDK `query()` → SSE 流          |
+| `src/codex-provider.ts`     | Codex SDK `runStreamed()` → SSE 流           |
+| `src/sse-utils.ts`          | 共享的 SSE 格式化辅助函数                    |
+| `src/permission-gateway.ts` | 异步桥接：SDK `canUseTool` ↔ IM 按钮         |
+| `src/logger.ts`             | 密钥脱敏的文件日志，支持轮转                 |
+| `scripts/daemon.sh`         | 进程管理（start/stop/status/logs）           |
+| `scripts/doctor.sh`         | 诊断检查                                     |
+| `SKILL.md`                  | Claude Code Skill 定义文件                   |
 
 ### 权限流程
 
@@ -223,12 +225,12 @@ bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh --link
 
 检查项目：Node.js 版本、配置文件是否存在及权限、token 有效性（实时 API 调用）、日志目录、PID 文件一致性、最近的错误。
 
-| 问题 | 解决方案 |
-|---|---|
-| `Bridge 无法启动` | 运行 `doctor`，检查 Node 版本和日志 |
-| `收不到消息` | 用 `doctor` 验证 token，检查允许用户配置 |
-| `权限超时` | 用户 5 分钟内未响应，工具调用自动拒绝 |
-| `PID 文件残留` | 运行 `stop` 再 `start`，脚本会自动清理 |
+| 问题              | 解决方案                                 |
+| ----------------- | ---------------------------------------- |
+| `Bridge 无法启动` | 运行 `doctor`，检查 Node 版本和日志      |
+| `收不到消息`      | 用 `doctor` 验证 token，检查允许用户配置 |
+| `权限超时`        | 用户 5 分钟内未响应，工具调用自动拒绝    |
+| `PID 文件残留`    | 运行 `stop` 再 `start`，脚本会自动清理   |
 
 详见 [references/troubleshooting.md](references/troubleshooting.md)。
 

@@ -32,15 +32,15 @@ If that path doesn't exist, fall back to Glob with pattern `**/skills/**/claude-
 
 Parse the user's intent from `$ARGUMENTS` into one of these subcommands:
 
-| User says (examples) | Subcommand |
-|---|---|
-| `setup`, `configure`, `配置`, `我想在飞书上用 Claude`, `帮我连接 Telegram` | setup |
-| `start`, `start bridge`, `启动`, `启动桥接` | start |
-| `stop`, `stop bridge`, `停止`, `停止桥接` | stop |
-| `status`, `bridge status`, `状态`, `运行状态`, `怎么看桥接的运行状态` | status |
-| `logs`, `logs 200`, `查看日志`, `查看日志 200` | logs |
-| `reconfigure`, `修改配置`, `帮我改一下 token`, `换个 bot` | reconfigure |
-| `doctor`, `diagnose`, `诊断`, `挂了`, `没反应了`, `bot 没反应`, `出问题了` | doctor |
+| User says (examples)                                                       | Subcommand  |
+| -------------------------------------------------------------------------- | ----------- |
+| `setup`, `configure`, `配置`, `我想在飞书上用 Claude`, `帮我连接 Telegram` | setup       |
+| `start`, `start bridge`, `启动`, `启动桥接`                                | start       |
+| `stop`, `stop bridge`, `停止`, `停止桥接`                                  | stop        |
+| `status`, `bridge status`, `状态`, `运行状态`, `怎么看桥接的运行状态`      | status      |
+| `logs`, `logs 200`, `查看日志`, `查看日志 200`                             | logs        |
+| `reconfigure`, `修改配置`, `帮我改一下 token`, `换个 bot`                  | reconfigure |
+| `doctor`, `diagnose`, `诊断`, `挂了`, `没反应了`, `bot 没反应`, `出问题了` | doctor      |
 
 **Disambiguation: `status` vs `doctor`** — Use `status` when the user just wants to check if the bridge is running (informational). Use `doctor` when the user reports a problem or suspects something is broken (diagnostic). When in doubt and the user describes a symptom (e.g., "没反应了", "挂了"), prefer `doctor`.
 
@@ -77,6 +77,7 @@ When AskUserQuestion IS available, collect input **one field at a time**. After 
 **Step 1 — Choose channels**
 
 Ask which channels to enable (telegram, discord, feishu, qq). Accept comma-separated input. Briefly describe each:
+
 - **telegram** — Best for personal use. Streaming preview, inline permission buttons.
 - **discord** — Good for team use. Server/channel/user-level access control.
 - **feishu** (Lark) — For Feishu/Lark teams. Event-based messaging.
@@ -101,10 +102,12 @@ For each enabled channel, read `SKILL_DIR/references/setup-guides.md` and presen
 **Step 3 — General settings**
 
 Ask for runtime, default working directory, model, and mode:
-- **Runtime**: `claude` (default), `codex`, `auto`
-  - `claude` — uses Claude Code CLI + Claude Agent SDK (requires `claude` CLI installed)
+
+- **Runtime**: `claude` (default), `codex`, `auto`, `cli-print`
+  - `claude` — uses Claude Code CLI + Claude Agent SDK (requires `claude` CLI + API key or Max/Pro plan)
   - `codex` — uses OpenAI Codex SDK (requires `codex` CLI; auth via `codex auth login` or `OPENAI_API_KEY`)
   - `auto` — tries Claude first, falls back to Codex if Claude CLI not found
+  - `cli-print` — spawns `claude --print` directly; works with Claude Code OAuth subscription without API key. Trade-off: no session persistence, no tool use (chat only)
 - **Working Directory**: default `$CWD`
 - **Model** (optional): Leave blank to inherit the runtime's own default model. If the user wants to override, ask them to enter a model name. Do NOT hardcode or suggest specific model names — the available models change over time.
 - **Mode**: `code` (default), `plan`, `ask`
@@ -127,6 +130,7 @@ Ask for runtime, default working directory, model, and mode:
 Run: `bash "SKILL_DIR/scripts/daemon.sh" start`
 
 Show the output to the user. If it fails, tell the user:
+
 - Run `doctor` to diagnose: `/claude-to-im doctor`
 - Check recent logs: `/claude-to-im logs`
 
@@ -158,6 +162,7 @@ Run: `bash "SKILL_DIR/scripts/daemon.sh" logs N`
 Run: `bash "SKILL_DIR/scripts/doctor.sh"`
 
 Show results and suggest fixes for any failures. Common fixes:
+
 - SDK cli.js missing → `cd SKILL_DIR && npm install`
 - dist/daemon.mjs stale → `cd SKILL_DIR && npm run build`
 - Config missing → run `setup`

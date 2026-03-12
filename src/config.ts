@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 export interface Config {
-  runtime: 'claude' | 'codex' | 'auto';
+  runtime: "claude" | "codex" | "auto" | "cli-print";
   enabledChannels: string[];
   defaultWorkDir: string;
   defaultModel?: string;
@@ -32,7 +32,8 @@ export interface Config {
   autoApprove?: boolean;
 }
 
-export const CTI_HOME = process.env.CTI_HOME || path.join(os.homedir(), ".claude-to-im");
+export const CTI_HOME =
+  process.env.CTI_HOME || path.join(os.homedir(), ".claude-to-im");
 export const CONFIG_PATH = path.join(CTI_HOME, "config.env");
 
 function parseEnvFile(content: string): Map<string, string> {
@@ -74,7 +75,11 @@ export function loadConfig(): Config {
   }
 
   const rawRuntime = env.get("CTI_RUNTIME") || "claude";
-  const runtime = (["claude", "codex", "auto"].includes(rawRuntime) ? rawRuntime : "claude") as Config["runtime"];
+  const runtime = (
+    ["claude", "codex", "auto", "cli-print"].includes(rawRuntime)
+      ? rawRuntime
+      : "claude"
+  ) as Config["runtime"];
 
   return {
     runtime,
@@ -91,9 +96,7 @@ export function loadConfig(): Config {
     feishuAllowedUsers: splitCsv(env.get("CTI_FEISHU_ALLOWED_USERS")),
     discordBotToken: env.get("CTI_DISCORD_BOT_TOKEN") || undefined,
     discordAllowedUsers: splitCsv(env.get("CTI_DISCORD_ALLOWED_USERS")),
-    discordAllowedChannels: splitCsv(
-      env.get("CTI_DISCORD_ALLOWED_CHANNELS")
-    ),
+    discordAllowedChannels: splitCsv(env.get("CTI_DISCORD_ALLOWED_CHANNELS")),
     discordAllowedGuilds: splitCsv(env.get("CTI_DISCORD_ALLOWED_GUILDS")),
     qqAppId: env.get("CTI_QQ_APP_ID") || undefined,
     qqAppSecret: env.get("CTI_QQ_APP_SECRET") || undefined,
@@ -118,47 +121,51 @@ export function saveConfig(config: Config): void {
   out += formatEnvLine("CTI_RUNTIME", config.runtime);
   out += formatEnvLine(
     "CTI_ENABLED_CHANNELS",
-    config.enabledChannels.join(",")
+    config.enabledChannels.join(","),
   );
   out += formatEnvLine("CTI_DEFAULT_WORKDIR", config.defaultWorkDir);
-  if (config.defaultModel) out += formatEnvLine("CTI_DEFAULT_MODEL", config.defaultModel);
+  if (config.defaultModel)
+    out += formatEnvLine("CTI_DEFAULT_MODEL", config.defaultModel);
   out += formatEnvLine("CTI_DEFAULT_MODE", config.defaultMode);
   out += formatEnvLine("CTI_TG_BOT_TOKEN", config.tgBotToken);
   out += formatEnvLine("CTI_TG_CHAT_ID", config.tgChatId);
   out += formatEnvLine(
     "CTI_TG_ALLOWED_USERS",
-    config.tgAllowedUsers?.join(",")
+    config.tgAllowedUsers?.join(","),
   );
   out += formatEnvLine("CTI_FEISHU_APP_ID", config.feishuAppId);
   out += formatEnvLine("CTI_FEISHU_APP_SECRET", config.feishuAppSecret);
   out += formatEnvLine("CTI_FEISHU_DOMAIN", config.feishuDomain);
   out += formatEnvLine(
     "CTI_FEISHU_ALLOWED_USERS",
-    config.feishuAllowedUsers?.join(",")
+    config.feishuAllowedUsers?.join(","),
   );
   out += formatEnvLine("CTI_DISCORD_BOT_TOKEN", config.discordBotToken);
   out += formatEnvLine(
     "CTI_DISCORD_ALLOWED_USERS",
-    config.discordAllowedUsers?.join(",")
+    config.discordAllowedUsers?.join(","),
   );
   out += formatEnvLine(
     "CTI_DISCORD_ALLOWED_CHANNELS",
-    config.discordAllowedChannels?.join(",")
+    config.discordAllowedChannels?.join(","),
   );
   out += formatEnvLine(
     "CTI_DISCORD_ALLOWED_GUILDS",
-    config.discordAllowedGuilds?.join(",")
+    config.discordAllowedGuilds?.join(","),
   );
   out += formatEnvLine("CTI_QQ_APP_ID", config.qqAppId);
   out += formatEnvLine("CTI_QQ_APP_SECRET", config.qqAppSecret);
   out += formatEnvLine(
     "CTI_QQ_ALLOWED_USERS",
-    config.qqAllowedUsers?.join(",")
+    config.qqAllowedUsers?.join(","),
   );
   if (config.qqImageEnabled !== undefined)
     out += formatEnvLine("CTI_QQ_IMAGE_ENABLED", String(config.qqImageEnabled));
   if (config.qqMaxImageSize !== undefined)
-    out += formatEnvLine("CTI_QQ_MAX_IMAGE_SIZE", String(config.qqMaxImageSize));
+    out += formatEnvLine(
+      "CTI_QQ_MAX_IMAGE_SIZE",
+      String(config.qqMaxImageSize),
+    );
 
   fs.mkdirSync(CTI_HOME, { recursive: true });
   const tmpPath = CONFIG_PATH + ".tmp";
@@ -180,7 +187,7 @@ export function configToSettings(config: Config): Map<string, string> {
   //   telegram_bridge_allowed_users, telegram_chat_id
   m.set(
     "bridge_telegram_enabled",
-    config.enabledChannels.includes("telegram") ? "true" : "false"
+    config.enabledChannels.includes("telegram") ? "true" : "false",
   );
   if (config.tgBotToken) m.set("telegram_bot_token", config.tgBotToken);
   if (config.tgAllowedUsers)
@@ -193,7 +200,7 @@ export function configToSettings(config: Config): Map<string, string> {
   //   bridge_discord_allowed_guilds
   m.set(
     "bridge_discord_enabled",
-    config.enabledChannels.includes("discord") ? "true" : "false"
+    config.enabledChannels.includes("discord") ? "true" : "false",
   );
   if (config.discordBotToken)
     m.set("bridge_discord_bot_token", config.discordBotToken);
@@ -202,12 +209,12 @@ export function configToSettings(config: Config): Map<string, string> {
   if (config.discordAllowedChannels)
     m.set(
       "bridge_discord_allowed_channels",
-      config.discordAllowedChannels.join(",")
+      config.discordAllowedChannels.join(","),
     );
   if (config.discordAllowedGuilds)
     m.set(
       "bridge_discord_allowed_guilds",
-      config.discordAllowedGuilds.join(",")
+      config.discordAllowedGuilds.join(","),
     );
 
   // ── Feishu ──
@@ -215,7 +222,7 @@ export function configToSettings(config: Config): Map<string, string> {
   //   bridge_feishu_domain, bridge_feishu_enabled, bridge_feishu_allowed_users
   m.set(
     "bridge_feishu_enabled",
-    config.enabledChannels.includes("feishu") ? "true" : "false"
+    config.enabledChannels.includes("feishu") ? "true" : "false",
   );
   if (config.feishuAppId) m.set("bridge_feishu_app_id", config.feishuAppId);
   if (config.feishuAppSecret)
@@ -229,7 +236,7 @@ export function configToSettings(config: Config): Map<string, string> {
   //   bridge_qq_allowed_users, bridge_qq_image_enabled, bridge_qq_max_image_size
   m.set(
     "bridge_qq_enabled",
-    config.enabledChannels.includes("qq") ? "true" : "false"
+    config.enabledChannels.includes("qq") ? "true" : "false",
   );
   if (config.qqAppId) m.set("bridge_qq_app_id", config.qqAppId);
   if (config.qqAppSecret) m.set("bridge_qq_app_secret", config.qqAppSecret);

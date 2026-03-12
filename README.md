@@ -33,7 +33,7 @@ Claude Code / Codex → reads/writes your codebase
 ## Prerequisites
 
 - **Node.js >= 20**
-- **Claude Code CLI** (for `CTI_RUNTIME=claude` or `auto`) — installed and authenticated (`claude` command available)
+- **Claude Code CLI** (for `CTI_RUNTIME=claude`, `auto`, or `cli-print`) — installed and authenticated (`claude` command available)
 - **Codex CLI** (for `CTI_RUNTIME=codex` or `auto`) — `npm install -g @openai/codex`. Auth: run `codex auth login`, or set `OPENAI_API_KEY` (optional, for API mode)
 
 ## Installation
@@ -41,13 +41,14 @@ Claude Code / Codex → reads/writes your codebase
 ### npx skills (recommended)
 
 ```bash
-npx skills add op7418/Claude-to-IM-skill
+npx skills add cccccccAi/Claude-to-IM-skill
 ```
 
 ### Git clone
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/.claude/skills/claude-to-im
+git clone https://github.com/cccccccAi/Claude-to-IM-skill.git ~/.claude/skills/claude-to-im
+cd ~/.claude/skills/claude-to-im && npm install && npm run build
 ```
 
 Clones the repo directly into your personal skills directory. Claude Code discovers it automatically.
@@ -57,7 +58,8 @@ Clones the repo directly into your personal skills directory. Claude Code discov
 If you prefer to keep the repo elsewhere (e.g., for development):
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
+git clone https://github.com/cccccccAi/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
+cd ~/code/Claude-to-IM-skill && npm install && npm run build
 mkdir -p ~/.claude/skills
 ln -s ~/code/Claude-to-IM-skill ~/.claude/skills/claude-to-im
 ```
@@ -67,14 +69,14 @@ ln -s ~/code/Claude-to-IM-skill ~/.claude/skills/claude-to-im
 If you use [Codex](https://github.com/openai/codex), clone directly into the Codex skills directory:
 
 ```bash
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/.codex/skills/claude-to-im
+git clone https://github.com/cccccccAi/Claude-to-IM-skill.git ~/.codex/skills/claude-to-im
 ```
 
 Or use the provided install script for automatic dependency installation and build:
 
 ```bash
 # Clone and install (copy mode)
-git clone https://github.com/op7418/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
+git clone https://github.com/cccccccAi/Claude-to-IM-skill.git ~/code/Claude-to-IM-skill
 bash ~/code/Claude-to-IM-skill/scripts/install-codex.sh
 
 # Or use symlink mode for development
@@ -120,16 +122,16 @@ When Claude needs to use a tool (edit a file, run a command), you'll see a permi
 
 All commands are run inside Claude Code or Codex:
 
-| Claude Code | Codex (natural language) | Description |
-|---|---|---|
-| `/claude-to-im setup` | "claude-to-im setup" / "配置" | Interactive setup wizard |
-| `/claude-to-im start` | "start bridge" / "启动桥接" | Start the bridge daemon |
-| `/claude-to-im stop` | "stop bridge" / "停止桥接" | Stop the bridge daemon |
-| `/claude-to-im status` | "bridge status" / "状态" | Show daemon status |
-| `/claude-to-im logs` | "查看日志" | Show last 50 log lines |
-| `/claude-to-im logs 200` | "logs 200" | Show last 200 log lines |
-| `/claude-to-im reconfigure` | "reconfigure" / "修改配置" | Update config interactively |
-| `/claude-to-im doctor` | "doctor" / "诊断" | Diagnose issues |
+| Claude Code                 | Codex (natural language)      | Description                 |
+| --------------------------- | ----------------------------- | --------------------------- |
+| `/claude-to-im setup`       | "claude-to-im setup" / "配置" | Interactive setup wizard    |
+| `/claude-to-im start`       | "start bridge" / "启动桥接"   | Start the bridge daemon     |
+| `/claude-to-im stop`        | "stop bridge" / "停止桥接"    | Stop the bridge daemon      |
+| `/claude-to-im status`      | "bridge status" / "状态"      | Show daemon status          |
+| `/claude-to-im logs`        | "查看日志"                    | Show last 50 log lines      |
+| `/claude-to-im logs 200`    | "logs 200"                    | Show last 200 log lines     |
+| `/claude-to-im reconfigure` | "reconfigure" / "修改配置"    | Update config interactively |
+| `/claude-to-im doctor`      | "doctor" / "诊断"             | Diagnose issues             |
 
 ## Platform Setup Guides
 
@@ -188,19 +190,19 @@ The `setup` wizard provides inline guidance for every step. Here's a summary:
 
 ### Key components
 
-| Component | Role |
-|---|---|
-| `src/main.ts` | Daemon entry — assembles DI, starts bridge |
-| `src/config.ts` | Load/save `config.env`, map to bridge settings |
-| `src/store.ts` | JSON file BridgeStore (30 methods, write-through cache) |
-| `src/llm-provider.ts` | Claude Agent SDK `query()` → SSE stream |
-| `src/codex-provider.ts` | Codex SDK `runStreamed()` → SSE stream |
-| `src/sse-utils.ts` | Shared SSE formatting helper |
-| `src/permission-gateway.ts` | Async bridge: SDK `canUseTool` ↔ IM buttons |
-| `src/logger.ts` | Secret-redacted file logging with rotation |
-| `scripts/daemon.sh` | Process management (start/stop/status/logs) |
-| `scripts/doctor.sh` | Health checks |
-| `SKILL.md` | Claude Code skill definition |
+| Component                   | Role                                                    |
+| --------------------------- | ------------------------------------------------------- |
+| `src/main.ts`               | Daemon entry — assembles DI, starts bridge              |
+| `src/config.ts`             | Load/save `config.env`, map to bridge settings          |
+| `src/store.ts`              | JSON file BridgeStore (30 methods, write-through cache) |
+| `src/llm-provider.ts`       | Claude Agent SDK `query()` → SSE stream                 |
+| `src/codex-provider.ts`     | Codex SDK `runStreamed()` → SSE stream                  |
+| `src/sse-utils.ts`          | Shared SSE formatting helper                            |
+| `src/permission-gateway.ts` | Async bridge: SDK `canUseTool` ↔ IM buttons             |
+| `src/logger.ts`             | Secret-redacted file logging with rotation              |
+| `scripts/daemon.sh`         | Process management (start/stop/status/logs)             |
+| `scripts/doctor.sh`         | Health checks                                           |
+| `SKILL.md`                  | Claude Code skill definition                            |
 
 ### Permission flow
 
@@ -223,12 +225,12 @@ Run diagnostics:
 
 This checks: Node.js version, config file existence and permissions, token validity (live API calls), log directory, PID file consistency, and recent errors.
 
-| Issue | Solution |
-|---|---|
-| `Bridge won't start` | Run `doctor`. Check if Node >= 20. Check logs. |
-| `Messages not received` | Verify token with `doctor`. Check allowed users config. |
-| `Permission timeout` | User didn't respond within 5 min. Tool call auto-denied. |
-| `Stale PID file` | Run `stop` then `start`. daemon.sh auto-cleans stale PIDs. |
+| Issue                   | Solution                                                   |
+| ----------------------- | ---------------------------------------------------------- |
+| `Bridge won't start`    | Run `doctor`. Check if Node >= 20. Check logs.             |
+| `Messages not received` | Verify token with `doctor`. Check allowed users config.    |
+| `Permission timeout`    | User didn't respond within 5 min. Tool call auto-denied.   |
+| `Stale PID file`        | Run `stop` then `start`. daemon.sh auto-cleans stale PIDs. |
 
 See [references/troubleshooting.md](references/troubleshooting.md) for more details.
 
