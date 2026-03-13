@@ -62,6 +62,8 @@ export class CLIPrintProvider implements LLMProvider {
   private cliPath: string;
   private dangerouslySkipPermissions: boolean;
   private timeoutMs: number;
+  /** Session ID before the last switch — restored by /back command. */
+  private previousSessionId = "";
 
   constructor(
     cliPath?: string,
@@ -79,6 +81,8 @@ export class CLIPrintProvider implements LLMProvider {
     const env = buildSubprocessEnv();
     const timeoutMs = this.timeoutMs;
     const workingDirectory = params.workingDirectory;
+    // Captured for use inside the ReadableStream callback (where `this` is lost).
+    const self = this;
 
     return new ReadableStream({
       start(controller) {
@@ -104,6 +108,55 @@ export class CLIPrintProvider implements LLMProvider {
               sseEvent("text", "✅ 会话已重置，发下一条消息开始新对话"),
             );
             controller.enqueue(sseEvent("error", "SESSION_RESET"));
+            controller.close();
+            return;
+          }
+
+          // ── /back command: restore the previous session after a switch ──
+          // Emits a synthetic "status" event so conversation-engine updates
+          // the store to the previous session ID. No "error" event is sent,
+          // so computeSdkSessionUpdate sees hasError=false + no result event
+          // → returns null (no-op) → the status-event write is the final state.
+          if (params.prompt.trim() === "/back") {
+            if (!self.previousSessionId) {
+              controller.enqueue(
+                sseEvent(
+                  "text",
+                  "⚠️ 没有可恢复的历史会话（仅在本次 daemon 运行期间有效）",
+                ),
+              );
+              controller.close();
+              return;
+            }
+            const targetId = self.previousSessionId;
+            const short = targetId.slice(0, 8);
+            controller.enqueue(
+              sseEvent("status", { session_id: targetId, model: "" }),
+            );
+            controller.enqueue(
+              sseEvent(
+                "text",
+                `✅ 已恢复到会话 \`${short}\`\n下一条消息将从该会话继续`,
+              ),
+            );
+            controller.close();
+            return;
+          }
+
+          // ── /resume <id> command: switch to any arbitrary session ID ──
+          const resumeMatch = params.prompt.trim().match(/^\/resume\s+(\S+)$/);
+          if (resumeMatch) {
+            const targetId = resumeMatch[1];
+            const short = targetId.slice(0, 8);
+            controller.enqueue(
+              sseEvent("status", { session_id: targetId, model: "" }),
+            );
+            controller.enqueue(
+              sseEvent(
+                "text",
+                `✅ 已设置目标会话 \`${short}\`\n下一条消息将尝试从该会话继续`,
+              ),
+            );
             controller.close();
             return;
           }
@@ -209,8 +262,14 @@ export class CLIPrintProvider implements LLMProvider {
                         const newShort = action.sessionId.slice(0, 8);
                         let notification: string;
                         if (isSwitched && params.sdkSessionId) {
+                          // Save old session ID for /back command
+                          self.previousSessionId = params.sdkSessionId;
                           const oldShort = params.sdkSessionId.slice(0, 8);
-                          notification = `⚠️ 会话已切换\n旧：\`${oldShort}\`  →  新：\`${newShort}\`\n\n`;
+                          notification =
+                            `⚠️ 会话已切换\n` +
+                            `旧：\`${oldShort}\`  →  新：\`${newShort}\`\n` +
+                            `发 \`/back\` 可恢复旧会话\n` +
+                            `完整旧 ID：\`${params.sdkSessionId}\`\n\n`;
                         } else {
                           notification = `🔗 新会话（\`${newShort}\`）\n\n`;
                         }
