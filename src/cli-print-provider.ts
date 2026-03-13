@@ -78,6 +78,7 @@ export class CLIPrintProvider implements LLMProvider {
     const dangerouslySkipPermissions = this.dangerouslySkipPermissions;
     const env = buildSubprocessEnv();
     const timeoutMs = this.timeoutMs;
+    const workingDirectory = params.workingDirectory;
 
     return new ReadableStream({
       start(controller) {
@@ -85,7 +86,11 @@ export class CLIPrintProvider implements LLMProvider {
           let timedOut = false;
           let proc: ReturnType<typeof spawn> | undefined;
 
-          // Timeout: kill the subprocess and report a friendly error
+          // Timeout: kill the subprocess and emit a text message (not error).
+          // Using "text" instead of "error" preserves the sdkSessionId so the
+          // next message can resume the same Claude conversation via --resume.
+          // Using "error" would cause bridge-manager to clear sdkSessionId,
+          // forcing a brand-new session on the next message.
           const timeoutHandle = setTimeout(() => {
             timedOut = true;
             proc?.kill("SIGTERM");
@@ -94,8 +99,8 @@ export class CLIPrintProvider implements LLMProvider {
             );
             controller.enqueue(
               sseEvent(
-                "error",
-                `Request timed out after ${timeoutMs / 1000} seconds. The task may still be running in the background.`,
+                "text",
+                `⚠️ Request timed out after ${timeoutMs / 1000} seconds. The conversation context is preserved — send your next message to continue.`,
               ),
             );
             controller.close();
@@ -118,6 +123,7 @@ export class CLIPrintProvider implements LLMProvider {
 
             proc = spawn(cliPath, args, {
               env,
+              cwd: workingDirectory,
               stdio: ["pipe", "pipe", "pipe"],
             });
 
