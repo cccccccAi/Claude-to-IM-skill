@@ -32,6 +32,8 @@ export interface Config {
   autoApprove?: boolean;
   // Skip all permission checks — equivalent to --dangerously-skip-permissions in CLI
   dangerouslySkipPermissions?: boolean;
+  // Request timeout in seconds for cli-print mode (default: 600)
+  requestTimeoutSeconds?: number;
 }
 
 export const CTI_HOME =
@@ -112,6 +114,9 @@ export function loadConfig(): Config {
     autoApprove: env.get("CTI_AUTO_APPROVE") === "true",
     dangerouslySkipPermissions:
       env.get("CTI_DANGEROUSLY_SKIP_PERMISSIONS") === "true",
+    requestTimeoutSeconds: env.get("CTI_REQUEST_TIMEOUT_SECONDS")
+      ? Number(env.get("CTI_REQUEST_TIMEOUT_SECONDS"))
+      : undefined,
   };
 }
 

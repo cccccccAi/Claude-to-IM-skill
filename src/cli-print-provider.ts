@@ -28,8 +28,8 @@ import {
 import { sseEvent } from "./sse-utils.js";
 import { parseLine } from "./cli-print-parser.js";
 
-/** Default request timeout in milliseconds (3 minutes). */
-const DEFAULT_TIMEOUT_MS = 3 * 60 * 1000;
+/** Default request timeout in milliseconds (10 minutes). */
+const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Build CLI arguments for `claude --print` with stream-json output. */
 export function buildCliArgs(params: {
@@ -86,22 +86,17 @@ export class CLIPrintProvider implements LLMProvider {
           let timedOut = false;
           let proc: ReturnType<typeof spawn> | undefined;
 
-          // Timeout: kill the subprocess and emit a text message (not error).
-          // Using "text" instead of "error" preserves the sdkSessionId so the
-          // next message can resume the same Claude conversation via --resume.
-          // Using "error" would cause bridge-manager to clear sdkSessionId,
-          // forcing a brand-new session on the next message.
+          // Timeout: kill the subprocess and close the stream silently.
+          // We do NOT emit any message to the user — they can send a follow-up
+          // message to resume from the same session naturally.
+          // The stream is closed without an "error" event so hasError stays false,
+          // which means computeSdkSessionUpdate preserves sdkSessionId for the
+          // next --resume call. Silent close = session preserved = seamless recovery.
           const timeoutHandle = setTimeout(() => {
             timedOut = true;
             proc?.kill("SIGTERM");
             console.warn(
-              `[cli-print-provider] Request timed out after ${timeoutMs / 1000}s`,
-            );
-            controller.enqueue(
-              sseEvent(
-                "text",
-                `⚠️ Request timed out after ${timeoutMs / 1000} seconds. The conversation context is preserved — send your next message to continue.`,
-              ),
+              `[cli-print-provider] Request timed out after ${timeoutMs / 1000}s — session preserved, closing stream silently`,
             );
             controller.close();
           }, timeoutMs);

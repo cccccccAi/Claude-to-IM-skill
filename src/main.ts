@@ -62,7 +62,13 @@ async function resolveProvider(
         "[claude-to-im] WARNING: dangerously-skip-permissions enabled — all tool permission checks bypassed",
       );
     }
-    return new CLIPrintProvider(cliPath, config.dangerouslySkipPermissions);
+    return new CLIPrintProvider(
+      cliPath,
+      config.dangerouslySkipPermissions,
+      config.requestTimeoutSeconds !== undefined
+        ? config.requestTimeoutSeconds * 1000
+        : undefined,
+    );
   }
 
   if (runtime === "auto") {
