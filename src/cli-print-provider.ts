@@ -89,12 +89,32 @@ export class CLIPrintProvider implements LLMProvider {
           // Used by the timeout handler to append a truncation marker (▌)
           // when the response was cut short mid-stream.
           let hasText = false;
+          // Session ID captured from the first "status" event.
+          // Appended as a subtle footer on every completed response so
+          // the user can always see which session they are in.
+          let capturedSessionId = "";
+
+          // ── /new command: reset session without calling Claude ──
+          // The trick: emit text (success message) + error (to trigger
+          // computeSdkSessionUpdate returning '' → session cleared).
+          // bridge-manager skips error display when responseText is non-empty,
+          // so the user only sees the confirmation text.
+          if (params.prompt.trim() === "/new") {
+            controller.enqueue(
+              sseEvent("text", "✅ 会话已重置，发下一条消息开始新对话"),
+            );
+            controller.enqueue(sseEvent("error", "SESSION_RESET"));
+            controller.close();
+            return;
+          }
 
           // Timeout: kill the subprocess and close the stream.
           // - No alarming error message is sent — the user can simply send
           //   their next message to continue from the same session.
           // - If partial text was already streamed, append ▌ so the user
           //   knows the response was cut short and can ask to "继续".
+          // - If no text yet (Claude was still thinking), append the session
+          //   ID as a subtle indicator so user knows the session is preserved.
           // - Stream is closed WITHOUT an "error" event so hasError stays
           //   false → computeSdkSessionUpdate preserves sdkSessionId →
           //   next message auto-resumes via --resume.
@@ -107,6 +127,14 @@ export class CLIPrintProvider implements LLMProvider {
             if (hasText) {
               // Append truncation marker so user knows to say "继续"
               controller.enqueue(sseEvent("text", " ▌"));
+            } else if (capturedSessionId) {
+              // No output yet — show session ID so user knows request was received
+              controller.enqueue(
+                sseEvent(
+                  "text",
+                  `⌛ 处理中超时，会话已保留\n\`${capturedSessionId.slice(0, 8)}\``,
+                ),
+              );
             }
             controller.close();
           }, timeoutMs);
@@ -167,8 +195,10 @@ export class CLIPrintProvider implements LLMProvider {
                     controller.enqueue(sseEvent("text", action.text));
                     break;
                   case "status": {
+                    capturedSessionId = action.sessionId;
                     // Notify user once when a new session starts (no prior session,
                     // or session changed from what was requested via --resume).
+                    // On switch, show BOTH old and new IDs so user can recover.
                     if (!sessionNotified) {
                       sessionNotified = true;
                       const isNew = !params.sdkSessionId;
@@ -176,13 +206,15 @@ export class CLIPrintProvider implements LLMProvider {
                         params.sdkSessionId &&
                         action.sessionId !== params.sdkSessionId;
                       if (isNew || isSwitched) {
-                        const short = action.sessionId.slice(0, 8);
-                        const label = isSwitched
-                          ? "⚠️ 会话已切换"
-                          : "🔗 新会话";
-                        controller.enqueue(
-                          sseEvent("text", `${label}（ID: \`${short}\`）\n\n`),
-                        );
+                        const newShort = action.sessionId.slice(0, 8);
+                        let notification: string;
+                        if (isSwitched && params.sdkSessionId) {
+                          const oldShort = params.sdkSessionId.slice(0, 8);
+                          notification = `⚠️ 会话已切换\n旧：\`${oldShort}\`  →  新：\`${newShort}\`\n\n`;
+                        } else {
+                          notification = `🔗 新会话（\`${newShort}\`）\n\n`;
+                        }
+                        controller.enqueue(sseEvent("text", notification));
                       }
                     }
                     controller.enqueue(
@@ -195,6 +227,16 @@ export class CLIPrintProvider implements LLMProvider {
                   }
                   case "result":
                     hasResult = true;
+                    // Append subtle session ID footer before the result event
+                    // so users always know which session produced this response.
+                    if (capturedSessionId) {
+                      controller.enqueue(
+                        sseEvent(
+                          "text",
+                          `\n\n\`${capturedSessionId.slice(0, 8)}\``,
+                        ),
+                      );
+                    }
                     controller.enqueue(
                       sseEvent("result", {
                         session_id: action.sessionId,
