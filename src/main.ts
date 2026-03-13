@@ -192,9 +192,7 @@ async function main(): Promise<void> {
     },
   });
 
-  await bridgeManager.start();
-
-  // Graceful shutdown
+  // Graceful shutdown — register BEFORE start() so signals during init are caught
   let shuttingDown = false;
   const shutdown = async (signal?: string) => {
     if (shuttingDown) return;
@@ -221,7 +219,11 @@ async function main(): Promise<void> {
       running: false,
       lastExitReason: `unhandledRejection: ${reason instanceof Error ? reason.message : String(reason)}`,
     });
+    process.exit(1);
   });
+
+  await bridgeManager.start();
+
   process.on("uncaughtException", (err) => {
     console.error(
       "[claude-to-im] uncaughtException:",

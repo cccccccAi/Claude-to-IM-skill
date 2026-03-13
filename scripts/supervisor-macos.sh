@@ -10,6 +10,14 @@ PLIST_FILE="$PLIST_DIR/$LAUNCHD_LABEL.plist"
 
 # Collect env vars that should be forwarded into the plist.
 # We honour clean_env() logic by reading *after* clean_env runs.
+xml_escape() {
+  local s="$1"
+  s="${s//&/&amp;}"
+  s="${s//</&lt;}"
+  s="${s//>/&gt;}"
+  printf '%s' "$s"
+}
+
 build_env_dict() {
   local indent="            "
   local dict=""
@@ -18,13 +26,17 @@ build_env_dict() {
   for var in HOME PATH USER SHELL LANG TMPDIR; do
     local val="${!var:-}"
     [ -z "$val" ] && continue
-    dict+="${indent}<key>${var}</key>\n${indent}<string>${val}</string>\n"
+    local escaped
+    escaped=$(xml_escape "$val")
+    dict+="${indent}<key>${var}</key>\n${indent}<string>${escaped}</string>\n"
   done
 
   # Forward CTI_* vars
   while IFS='=' read -r name val; do
     case "$name" in CTI_*)
-      dict+="${indent}<key>${name}</key>\n${indent}<string>${val}</string>\n"
+      local escaped
+      escaped=$(xml_escape "$val")
+      dict+="${indent}<key>${name}</key>\n${indent}<string>${escaped}</string>\n"
       ;; esac
   done < <(env)
 
@@ -32,7 +44,9 @@ build_env_dict() {
   for var in HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy NO_PROXY no_proxy; do
     local val="${!var:-}"
     [ -z "$val" ] && continue
-    dict+="${indent}<key>${var}</key>\n${indent}<string>${val}</string>\n"
+    local escaped
+    escaped=$(xml_escape "$val")
+    dict+="${indent}<key>${var}</key>\n${indent}<string>${escaped}</string>\n"
   done
 
   # Forward runtime-specific API keys
@@ -45,7 +59,9 @@ build_env_dict() {
       for var in OPENAI_API_KEY CODEX_API_KEY CTI_CODEX_API_KEY CTI_CODEX_BASE_URL; do
         local val="${!var:-}"
         [ -z "$val" ] && continue
-        dict+="${indent}<key>${var}</key>\n${indent}<string>${val}</string>\n"
+        local escaped
+        escaped=$(xml_escape "$val")
+        dict+="${indent}<key>${var}</key>\n${indent}<string>${escaped}</string>\n"
       done
       ;;
   esac
@@ -55,13 +71,15 @@ build_env_dict() {
       # Third-party API providers need these to reach the CLI subprocess.
       while IFS='=' read -r name val; do
         case "$name" in ANTHROPIC_*)
-          dict+="${indent}<key>${name}</key>\n${indent}<string>${val}</string>\n"
+          local escaped
+          escaped=$(xml_escape "$val")
+          dict+="${indent}<key>${name}</key>\n${indent}<string>${escaped}</string>\n"
           ;; esac
       done < <(env)
       ;;
   esac
 
-  echo -e "$dict"
+  printf '%b' "$dict"
 }
 
 generate_plist() {

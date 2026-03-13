@@ -1,6 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { CTI_HOME } from './config.js';
+import fs from "node:fs";
+import path from "node:path";
+import { CTI_HOME } from "./config.js";
 
 const MASK_PATTERNS: RegExp[] = [
   /(?:token|secret|password|api_key)["']?\s*[:=]\s*["']?([^\s"',]+)/gi,
@@ -12,23 +12,32 @@ export function maskSecrets(text: string): string {
   let result = text;
   for (const pattern of MASK_PATTERNS) {
     pattern.lastIndex = 0;
-    result = result.replace(pattern, (match) => {
+    result = result.replace(pattern, (match, captured?: string) => {
+      // For patterns with a capture group, mask only the secret value
+      if (captured && match.includes(captured)) {
+        const masked =
+          captured.length <= 4
+            ? "****"
+            : "*".repeat(captured.length - 4) + captured.slice(-4);
+        return match.replace(captured, masked);
+      }
+      // Patterns without capture group (e.g. Bearer token, bot token)
       if (match.length <= 4) return match;
-      return '*'.repeat(match.length - 4) + match.slice(-4);
+      return "*".repeat(match.length - 4) + match.slice(-4);
     });
   }
   return result;
 }
 
-const LOG_DIR = path.join(CTI_HOME, 'logs');
-const LOG_PATH = path.join(LOG_DIR, 'bridge.log');
+const LOG_DIR = path.join(CTI_HOME, "logs");
+const LOG_PATH = path.join(LOG_DIR, "bridge.log");
 const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_ROTATED = 3;
 
 let logStream: fs.WriteStream | null = null;
 
 function openLogStream(): fs.WriteStream {
-  return fs.createWriteStream(LOG_PATH, { flags: 'a' });
+  return fs.createWriteStream(LOG_PATH, { flags: "a" });
 }
 
 function rotateIfNeeded(): void {
@@ -65,15 +74,17 @@ export function setupLogger(): void {
 
   const write = (level: string, args: unknown[]) => {
     const timestamp = new Date().toISOString();
-    const message = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+    const message = args
+      .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+      .join(" ");
     const formatted = `[${timestamp}] [${level}] ${message}`;
     const masked = maskSecrets(formatted);
 
     rotateIfNeeded();
-    logStream?.write(masked + '\n');
+    logStream?.write(masked + "\n");
   };
 
-  console.log = (...args: unknown[]) => write('INFO', args);
-  console.error = (...args: unknown[]) => write('ERROR', args);
-  console.warn = (...args: unknown[]) => write('WARN', args);
+  console.log = (...args: unknown[]) => write("INFO", args);
+  console.error = (...args: unknown[]) => write("ERROR", args);
+  console.warn = (...args: unknown[]) => write("WARN", args);
 }

@@ -5,30 +5,49 @@
  * the claude-to-im bridge conversation engine.
  */
 
-import fs from 'node:fs';
-import { execSync } from 'node:child_process';
-import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { SDKMessage, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-import type { LLMProvider, StreamChatParams, FileAttachment } from 'claude-to-im/src/lib/bridge/host.js';
-import type { PendingPermissions } from './permission-gateway.js';
+import fs from "node:fs";
+import { execSync, spawnSync } from "node:child_process";
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import type {
+  SDKMessage,
+  PermissionResult,
+} from "@anthropic-ai/claude-agent-sdk";
+import type {
+  LLMProvider,
+  StreamChatParams,
+  FileAttachment,
+} from "claude-to-im/src/lib/bridge/host.js";
+import type { PendingPermissions } from "./permission-gateway.js";
 
-import { sseEvent } from './sse-utils.js';
+import { sseEvent } from "./sse-utils.js";
 
 // ── Environment isolation ──
 
 /** Env vars always passed through to the CLI subprocess. */
 const ENV_WHITELIST = new Set([
-  'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL',
-  'LANG', 'LC_ALL', 'LC_CTYPE',
-  'TMPDIR', 'TEMP', 'TMP',
-  'TERM', 'COLORTERM',
-  'NODE_PATH', 'NODE_EXTRA_CA_CERTS',
-  'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME',
-  'SSH_AUTH_SOCK',
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TMPDIR",
+  "TEMP",
+  "TMP",
+  "TERM",
+  "COLORTERM",
+  "NODE_PATH",
+  "NODE_EXTRA_CA_CERTS",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "SSH_AUTH_SOCK",
 ]);
 
 /** Prefixes that are always stripped (even in inherit mode). */
-const ENV_ALWAYS_STRIP = ['CLAUDECODE'];
+const ENV_ALWAYS_STRIP = ["CLAUDECODE"];
 
 // ── Auth/credential-error detection ──
 
@@ -52,15 +71,15 @@ const API_AUTH_PATTERNS = [
   /401\b/,
 ];
 
-export type AuthErrorKind = 'cli' | 'api' | false;
+export type AuthErrorKind = "cli" | "api" | false;
 
 /**
  * Classify an error message as a CLI login issue, an API credential issue, or neither.
  * Returns 'cli' for local auth problems, 'api' for remote credential problems, false otherwise.
  */
 export function classifyAuthError(text: string): AuthErrorKind {
-  if (CLI_AUTH_PATTERNS.some(re => re.test(text))) return 'cli';
-  if (API_AUTH_PATTERNS.some(re => re.test(text))) return 'api';
+  if (CLI_AUTH_PATTERNS.some((re) => re.test(text))) return "cli";
+  if (API_AUTH_PATTERNS.some((re) => re.test(text))) return "api";
   return false;
 }
 
@@ -70,15 +89,16 @@ export function isAuthError(text: string): boolean {
 }
 
 const CLI_AUTH_USER_MESSAGE =
-  'Claude CLI is not logged in. Run `claude auth login`, then restart the bridge.';
+  "Claude CLI is not logged in. Run `claude auth login`, then restart the bridge.";
 
 const API_AUTH_USER_MESSAGE =
-  'API credential error. Check your ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN in config.env, ' +
-  'or verify your organization has access to the requested model.';
+  "API credential error. Check your ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN in config.env, " +
+  "or verify your organization has access to the requested model.";
 
 // ── Cross-runtime model guard ──
 
-const NON_CLAUDE_MODEL_RE = /^(gpt-|o[1-9][-_]|codex[-_]|davinci|text-|openai\/)/i;
+const NON_CLAUDE_MODEL_RE =
+  /^(gpt-|o[1-9][-_]|codex[-_]|davinci|text-|openai\/)/i;
 
 /** Return true if a model name clearly belongs to a non-Claude provider. */
 export function isNonClaudeModel(model?: string): boolean {
@@ -94,10 +114,10 @@ export function isNonClaudeModel(model?: string): boolean {
  *   "strict"  — only whitelist + CTI_* + ANTHROPIC_* from config.env
  */
 export function buildSubprocessEnv(): Record<string, string> {
-  const mode = process.env.CTI_ENV_ISOLATION || 'inherit';
+  const mode = process.env.CTI_ENV_ISOLATION || "inherit";
   const out: Record<string, string> = {};
 
-  if (mode === 'inherit') {
+  if (mode === "inherit") {
     // Pass everything except always-stripped vars
     for (const [k, v] of Object.entries(process.env)) {
       if (v === undefined) continue;
@@ -108,23 +128,33 @@ export function buildSubprocessEnv(): Record<string, string> {
     // Strict: whitelist only
     for (const [k, v] of Object.entries(process.env)) {
       if (v === undefined) continue;
-      if (ENV_WHITELIST.has(k)) { out[k] = v; continue; }
+      if (ENV_WHITELIST.has(k)) {
+        out[k] = v;
+        continue;
+      }
       // Pass through CTI_* so skill config is available
-      if (k.startsWith('CTI_')) { out[k] = v; continue; }
+      if (k.startsWith("CTI_")) {
+        out[k] = v;
+        continue;
+      }
     }
     // Always pass through ANTHROPIC_* in claude/auto runtime —
     // third-party API providers need these to reach the CLI subprocess.
-    const runtime = process.env.CTI_RUNTIME || 'claude';
-    if (runtime === 'claude' || runtime === 'auto') {
+    const runtime = process.env.CTI_RUNTIME || "claude";
+    if (runtime === "claude" || runtime === "auto") {
       for (const [k, v] of Object.entries(process.env)) {
-        if (v !== undefined && k.startsWith('ANTHROPIC_')) out[k] = v;
+        if (v !== undefined && k.startsWith("ANTHROPIC_")) out[k] = v;
       }
     }
 
     // In codex/auto mode, pass through OPENAI_* / CODEX_* env vars
-    if (runtime === 'codex' || runtime === 'auto') {
+    if (runtime === "codex" || runtime === "auto") {
       for (const [k, v] of Object.entries(process.env)) {
-        if (v !== undefined && (k.startsWith('OPENAI_') || k.startsWith('CODEX_'))) out[k] = v;
+        if (
+          v !== undefined &&
+          (k.startsWith("OPENAI_") || k.startsWith("CODEX_"))
+        )
+          out[k] = v;
       }
     }
   }
@@ -141,7 +171,9 @@ const MIN_CLI_MAJOR = 2;
  * Parse a version string like "2.3.1" or "claude 2.3.1" into a major number.
  * Returns undefined if parsing fails.
  */
-export function parseCliMajorVersion(versionOutput: string): number | undefined {
+export function parseCliMajorVersion(
+  versionOutput: string,
+): number | undefined {
   const m = versionOutput.match(/(\d+)\.\d+/);
   return m ? parseInt(m[1], 10) : undefined;
 }
@@ -150,14 +182,19 @@ export function parseCliMajorVersion(versionOutput: string): number | undefined 
  * Run `claude --version` at a given path and return the version string.
  * Returns undefined on failure.
  */
-function getCliVersion(cliPath: string, env?: Record<string, string>): string | undefined {
+function getCliVersion(
+  cliPath: string,
+  env?: Record<string, string>,
+): string | undefined {
   try {
-    return execSync(`"${cliPath}" --version`, {
-      encoding: 'utf-8',
+    const result = spawnSync(cliPath, ["--version"], {
+      encoding: "utf-8",
       timeout: 10_000,
       env: env || buildSubprocessEnv(),
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    if (result.status !== 0 || !result.stdout) return undefined;
+    return result.stdout.trim();
   } catch {
     return undefined;
   }
@@ -167,26 +204,36 @@ function getCliVersion(cliPath: string, env?: Record<string, string>): string | 
  * Flags that the SDK passes to the CLI subprocess.
  * If `claude --help` doesn't mention these, the CLI build is incompatible.
  */
-const REQUIRED_CLI_FLAGS = ['output-format', 'input-format', 'permission-mode', 'setting-sources'];
+const REQUIRED_CLI_FLAGS = [
+  "output-format",
+  "input-format",
+  "permission-mode",
+  "setting-sources",
+];
 
 /**
  * Check `claude --help` for required flags.
  * Returns the list of missing flags (empty = all present).
  */
-function checkRequiredFlags(cliPath: string, env?: Record<string, string>): string[] {
+function checkRequiredFlags(
+  cliPath: string,
+  env?: Record<string, string>,
+): string[] {
   let helpText: string;
   try {
-    helpText = execSync(`"${cliPath}" --help`, {
-      encoding: 'utf-8',
+    const result = spawnSync(cliPath, ["--help"], {
+      encoding: "utf-8",
       timeout: 10_000,
       env: env || buildSubprocessEnv(),
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ["pipe", "pipe", "pipe"],
     });
+    if (!result.stdout) return [];
+    helpText = result.stdout;
   } catch {
     // Can't run --help; don't block on this — version check is primary
     return [];
   }
-  return REQUIRED_CLI_FLAGS.filter(flag => !helpText.includes(flag));
+  return REQUIRED_CLI_FLAGS.filter((flag) => !helpText.includes(flag));
 }
 
 /**
@@ -194,12 +241,17 @@ function checkRequiredFlags(cliPath: string, env?: Record<string, string>): stri
  * with the required flags for SDK integration.
  * Returns { compatible, version, ... } or undefined if the CLI cannot run at all.
  */
-export function checkCliCompatibility(cliPath: string, env?: Record<string, string>): {
-  compatible: boolean;
-  version: string;
-  major: number | undefined;
-  missingFlags?: string[];
-} | undefined {
+export function checkCliCompatibility(
+  cliPath: string,
+  env?: Record<string, string>,
+):
+  | {
+      compatible: boolean;
+      version: string;
+      major: number | undefined;
+      missingFlags?: string[];
+    }
+  | undefined {
   const version = getCliVersion(cliPath, env);
   if (!version) return undefined;
   const major = parseCliMajorVersion(version);
@@ -221,7 +273,11 @@ export function checkCliCompatibility(cliPath: string, env?: Record<string, stri
  * and supports the flags required by the SDK.
  * Returns { ok, version?, error? }.
  */
-export function preflightCheck(cliPath: string): { ok: boolean; version?: string; error?: string } {
+export function preflightCheck(cliPath: string): {
+  ok: boolean;
+  version?: string;
+  error?: string;
+} {
   const cleanEnv = buildSubprocessEnv();
   const compat = checkCliCompatibility(cliPath, cleanEnv);
   if (!compat) {
@@ -231,7 +287,8 @@ export function preflightCheck(cliPath: string): { ok: boolean; version?: string
     return {
       ok: false,
       version: compat.version,
-      error: `claude CLI version ${compat.version} is too old (need >= ${MIN_CLI_MAJOR}.x). ` +
+      error:
+        `claude CLI version ${compat.version} is too old (need >= ${MIN_CLI_MAJOR}.x). ` +
         `This is likely an npm-installed 1.x CLI. Install the native CLI: https://docs.anthropic.com/en/docs/claude-code`,
     };
   }
@@ -239,7 +296,8 @@ export function preflightCheck(cliPath: string): { ok: boolean; version?: string
     return {
       ok: false,
       version: compat.version,
-      error: `claude CLI ${compat.version} is missing required flags: ${compat.missingFlags.join(', ')}. ` +
+      error:
+        `claude CLI ${compat.version} is missing required flags: ${compat.missingFlags.join(", ")}. ` +
         `Update the CLI: npm update -g @anthropic-ai/claude-code`,
     };
   }
@@ -262,17 +320,27 @@ function isExecutable(p: string): boolean {
  * Returns an array of absolute paths.
  */
 function findAllInPath(): string[] {
-  if (process.platform === 'win32') {
+  if (process.platform === "win32") {
     try {
-      return execSync('where claude', { encoding: 'utf-8', timeout: 3000 })
-        .trim().split('\n').map(s => s.trim()).filter(Boolean);
-    } catch { return []; }
+      return execSync("where claude", { encoding: "utf-8", timeout: 3000 })
+        .trim()
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
   }
   try {
     // `which -a` lists all matches, not just the first
-    return execSync('which -a claude', { encoding: 'utf-8', timeout: 3000 })
-      .trim().split('\n').map(s => s.trim()).filter(Boolean);
-  } catch { return []; }
+    return execSync("which -a claude", { encoding: "utf-8", timeout: 3000 })
+      .trim()
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -292,18 +360,20 @@ export function resolveClaudeCliPath(): string | undefined {
   if (fromEnv && isExecutable(fromEnv)) return fromEnv;
 
   // 2. Gather all candidates
-  const isWindows = process.platform === 'win32';
+  const isWindows = process.platform === "win32";
   const pathCandidates = findAllInPath();
   const wellKnown = isWindows
     ? [
-        process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\Programs\\claude\\claude.exe` : '',
-        'C:\\Program Files\\claude\\claude.exe',
+        process.env.LOCALAPPDATA
+          ? `${process.env.LOCALAPPDATA}\\Programs\\claude\\claude.exe`
+          : "",
+        "C:\\Program Files\\claude\\claude.exe",
       ].filter(Boolean)
     : [
         `${process.env.HOME}/.claude/local/claude`,
         `${process.env.HOME}/.local/bin/claude`,
-        '/usr/local/bin/claude',
-        '/opt/homebrew/bin/claude',
+        "/usr/local/bin/claude",
+        "/opt/homebrew/bin/claude",
         `${process.env.HOME}/.npm-global/bin/claude`,
       ];
 
@@ -325,13 +395,17 @@ export function resolveClaudeCliPath(): string | undefined {
     const compat = checkCliCompatibility(p);
     if (compat?.compatible) {
       if (p !== pathCandidates[0] && pathCandidates.length > 0) {
-        console.log(`[llm-provider] Skipping incompatible CLI at "${pathCandidates[0]}", using "${p}" (${compat.version})`);
+        console.log(
+          `[llm-provider] Skipping incompatible CLI at "${pathCandidates[0]}", using "${p}" (${compat.version})`,
+        );
       }
       return p;
     }
     if (compat) {
       // Version detected but too old — skip it entirely, do NOT fall back
-      console.warn(`[llm-provider] CLI at "${p}" is version ${compat.version} (need >= ${MIN_CLI_MAJOR}.x), skipping`);
+      console.warn(
+        `[llm-provider] CLI at "${p}" is version ${compat.version} (need >= ${MIN_CLI_MAJOR}.x), skipping`,
+      );
     } else if (!firstUnverifiable) {
       // Executable exists but --version failed (timeout, crash, etc.)
       // Keep as last-resort fallback only if NO candidate had a parseable version
@@ -346,10 +420,14 @@ export function resolveClaudeCliPath(): string | undefined {
 
 // ── Multi-modal prompt builder ──
 
-type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+type ImageMediaType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
 
 const SUPPORTED_IMAGE_TYPES = new Set<string>([
-  'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp',
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
 ]);
 
 /**
@@ -360,35 +438,46 @@ const SUPPORTED_IMAGE_TYPES = new Set<string>([
 function buildPrompt(
   text: string,
   files?: FileAttachment[],
-): string | AsyncIterable<{ type: 'user'; message: { role: 'user'; content: unknown[] }; parent_tool_use_id: null; session_id: string }> {
-  const imageFiles = files?.filter(f => SUPPORTED_IMAGE_TYPES.has(f.type));
+):
+  | string
+  | AsyncIterable<{
+      type: "user";
+      message: { role: "user"; content: unknown[] };
+      parent_tool_use_id: null;
+      session_id: string;
+    }> {
+  const imageFiles = files?.filter((f) => SUPPORTED_IMAGE_TYPES.has(f.type));
   if (!imageFiles || imageFiles.length === 0) return text;
 
   const contentBlocks: unknown[] = [];
 
   for (const file of imageFiles) {
     contentBlocks.push({
-      type: 'image',
+      type: "image",
       source: {
-        type: 'base64',
-        media_type: (file.type === 'image/jpg' ? 'image/jpeg' : file.type) as ImageMediaType,
+        type: "base64",
+        media_type: (file.type === "image/jpg"
+          ? "image/jpeg"
+          : file.type) as ImageMediaType,
         data: file.data,
       },
     });
   }
 
   if (text.trim()) {
-    contentBlocks.push({ type: 'text', text });
+    contentBlocks.push({ type: "text", text });
   }
 
   const msg = {
-    type: 'user' as const,
-    message: { role: 'user' as const, content: contentBlocks },
+    type: "user" as const,
+    message: { role: "user" as const, content: contentBlocks },
     parent_tool_use_id: null,
-    session_id: '',
+    session_id: "",
   };
 
-  return (async function* () { yield msg; })();
+  return (async function* () {
+    yield msg;
+  })();
 }
 
 /**
@@ -423,7 +512,11 @@ export class SDKLLMProvider implements LLMProvider {
   private cliPath: string | undefined;
   private autoApprove: boolean;
 
-  constructor(private pendingPerms: PendingPermissions, cliPath?: string, autoApprove = false) {
+  constructor(
+    private pendingPerms: PendingPermissions,
+    cliPath?: string,
+    autoApprove = false,
+  ) {
     this.cliPath = cliPath;
     this.autoApprove = autoApprove;
   }
@@ -438,8 +531,12 @@ export class SDKLLMProvider implements LLMProvider {
         (async () => {
           // Ring-buffer for recent stderr output (max 4 KB)
           const MAX_STDERR = 4096;
-          let stderrBuf = '';
-          const state: StreamState = { hasReceivedResult: false, hasStreamedText: false, lastAssistantText: '' };
+          let stderrBuf = "";
+          const state: StreamState = {
+            hasReceivedResult: false,
+            hasStreamedText: false,
+            lastAssistantText: "",
+          };
 
           try {
             const cleanEnv = buildSubprocessEnv();
@@ -448,7 +545,9 @@ export class SDKLLMProvider implements LLMProvider {
             // that may linger in session data from a previous Codex runtime.
             let model = params.model;
             if (isNonClaudeModel(model)) {
-              console.warn(`[llm-provider] Ignoring non-Claude model "${model}", using CLI default`);
+              console.warn(
+                `[llm-provider] Ignoring non-Claude model "${model}", using CLI default`,
+              );
               model = undefined;
             }
 
@@ -457,7 +556,9 @@ export class SDKLLMProvider implements LLMProvider {
             // when a stored model is inaccessible on the current machine/plan.
             const passModel = !!process.env.CTI_DEFAULT_MODEL;
             if (model && !passModel) {
-              console.log(`[llm-provider] Skipping model "${model}", using CLI default (set CTI_DEFAULT_MODEL to override)`);
+              console.log(
+                `[llm-provider] Skipping model "${model}", using CLI default (set CTI_DEFAULT_MODEL to override)`,
+              );
               model = undefined;
             }
 
@@ -466,7 +567,9 @@ export class SDKLLMProvider implements LLMProvider {
               model,
               resume: params.sdkSessionId || undefined,
               abortController: params.abortController,
-              permissionMode: (params.permissionMode as 'default' | 'acceptEdits' | 'plan') || undefined,
+              permissionMode:
+                (params.permissionMode as "default" | "acceptEdits" | "plan") ||
+                undefined,
               includePartialMessages: true,
               env: cleanEnv,
               stderr: (data: string) => {
@@ -476,37 +579,37 @@ export class SDKLLMProvider implements LLMProvider {
                 }
               },
               canUseTool: async (
-                  toolName: string,
-                  input: Record<string, unknown>,
-                  opts: { toolUseID: string; suggestions?: string[] },
-                ): Promise<PermissionResult> => {
-                  // Auto-approve if configured (useful for channels without
-                  // interactive permission UI, e.g. Feishu WebSocket mode)
-                  if (autoApprove) {
-                    return { behavior: 'allow' as const, updatedInput: input };
-                  }
+                toolName: string,
+                input: Record<string, unknown>,
+                opts: { toolUseID: string; suggestions?: string[] },
+              ): Promise<PermissionResult> => {
+                // Auto-approve if configured (useful for channels without
+                // interactive permission UI, e.g. Feishu WebSocket mode)
+                if (autoApprove) {
+                  return { behavior: "allow" as const, updatedInput: input };
+                }
 
-                  // Emit permission_request SSE event for the bridge
-                  controller.enqueue(
-                    sseEvent('permission_request', {
-                      permissionRequestId: opts.toolUseID,
-                      toolName,
-                      toolInput: input,
-                      suggestions: opts.suggestions || [],
-                    }),
-                  );
+                // Emit permission_request SSE event for the bridge
+                controller.enqueue(
+                  sseEvent("permission_request", {
+                    permissionRequestId: opts.toolUseID,
+                    toolName,
+                    toolInput: input,
+                    suggestions: opts.suggestions || [],
+                  }),
+                );
 
-                  // Block until IM user responds
-                  const result = await pendingPerms.waitFor(opts.toolUseID);
+                // Block until IM user responds
+                const result = await pendingPerms.waitFor(opts.toolUseID);
 
-                  if (result.behavior === 'allow') {
-                    return { behavior: 'allow' as const, updatedInput: input };
-                  }
-                  return {
-                    behavior: 'deny' as const,
-                    message: result.message || 'Denied by user',
-                  };
-                },
+                if (result.behavior === "allow") {
+                  return { behavior: "allow" as const, updatedInput: input };
+                }
+                return {
+                  behavior: "deny" as const,
+                  message: result.message || "Denied by user",
+                };
+              },
             };
             if (cliPath) {
               queryOptions.pathToClaudeCodeExecutable = cliPath;
@@ -514,8 +617,8 @@ export class SDKLLMProvider implements LLMProvider {
 
             const prompt = buildPrompt(params.prompt, params.files);
             const q = query({
-              prompt: prompt as Parameters<typeof query>[0]['prompt'],
-              options: queryOptions as Parameters<typeof query>[0]['options'],
+              prompt: prompt as Parameters<typeof query>[0]["prompt"],
+              options: queryOptions as Parameters<typeof query>[0]["options"],
             });
 
             for await (const msg of q) {
@@ -525,18 +628,28 @@ export class SDKLLMProvider implements LLMProvider {
             controller.close();
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            console.error('[llm-provider] SDK query error:', err instanceof Error ? err.stack || err.message : err);
+            console.error(
+              "[llm-provider] SDK query error:",
+              err instanceof Error ? err.stack || err.message : err,
+            );
             if (stderrBuf) {
-              console.error('[llm-provider] stderr from CLI:', stderrBuf.trim());
+              console.error(
+                "[llm-provider] stderr from CLI:",
+                stderrBuf.trim(),
+              );
             }
 
-            const isTransportExit = message.includes('process exited with code');
+            const isTransportExit = message.includes(
+              "process exited with code",
+            );
 
             // ── Case 1: Result already received ──
             // The SDK delivered a proper result (success or structured error).
             // A trailing "process exited with code 1" is transport teardown noise.
             if (state.hasReceivedResult && isTransportExit) {
-              console.log('[llm-provider] Suppressing transport error — result already received');
+              console.log(
+                "[llm-provider] Suppressing transport error — result already received",
+              );
               controller.close();
               return;
             }
@@ -549,8 +662,11 @@ export class SDKLLMProvider implements LLMProvider {
             // Only activate when the text is a recognised error; otherwise
             // a normal response that crashed before result would be silently
             // presented as if it succeeded.
-            if (state.lastAssistantText && classifyAuthError(state.lastAssistantText)) {
-              controller.enqueue(sseEvent('text', state.lastAssistantText));
+            if (
+              state.lastAssistantText &&
+              classifyAuthError(state.lastAssistantText)
+            ) {
+              controller.enqueue(sseEvent("text", state.lastAssistantText));
               controller.close();
               return;
             }
@@ -561,33 +677,34 @@ export class SDKLLMProvider implements LLMProvider {
             // knows the output is incomplete.
 
             // ── Build user-facing error message ──
-            const authKind = classifyAuthError(message) || classifyAuthError(stderrBuf);
+            const authKind =
+              classifyAuthError(message) || classifyAuthError(stderrBuf);
             let userMessage: string;
-            if (authKind === 'cli') {
+            if (authKind === "cli") {
               userMessage = CLI_AUTH_USER_MESSAGE;
-            } else if (authKind === 'api') {
+            } else if (authKind === "api") {
               userMessage = API_AUTH_USER_MESSAGE;
             } else if (isTransportExit) {
               const stderrSummary = stderrBuf.trim();
               const lines = [message];
               if (stderrSummary) {
-                lines.push('', 'CLI stderr:', stderrSummary.slice(-1024));
+                lines.push("", "CLI stderr:", stderrSummary.slice(-1024));
               }
               lines.push(
-                '',
-                'Possible causes:',
-                '• Claude CLI not authenticated — run: claude auth login',
-                '• Claude CLI version too old (need >= 2.x) — run: claude --version',
-                '• Missing ANTHROPIC_* env vars in daemon — check config.env',
-                '',
-                'Run `/claude-to-im doctor` to diagnose.',
+                "",
+                "Possible causes:",
+                "• Claude CLI not authenticated — run: claude auth login",
+                "• Claude CLI version too old (need >= 2.x) — run: claude --version",
+                "• Missing ANTHROPIC_* env vars in daemon — check config.env",
+                "",
+                "Run `/claude-to-im doctor` to diagnose.",
               );
-              userMessage = lines.join('\n');
+              userMessage = lines.join("\n");
             } else {
               userMessage = message;
             }
 
-            controller.enqueue(sseEvent('error', userMessage));
+            controller.enqueue(sseEvent("error", userMessage));
             controller.close();
           }
         })();
@@ -603,22 +720,22 @@ export function handleMessage(
   state: StreamState,
 ): void {
   switch (msg.type) {
-    case 'stream_event': {
+    case "stream_event": {
       const event = msg.event;
       if (
-        event.type === 'content_block_delta' &&
-        event.delta.type === 'text_delta'
+        event.type === "content_block_delta" &&
+        event.delta.type === "text_delta"
       ) {
         // Emit delta text — the bridge accumulates on its side
-        controller.enqueue(sseEvent('text', event.delta.text));
+        controller.enqueue(sseEvent("text", event.delta.text));
         state.hasStreamedText = true;
       }
       if (
-        event.type === 'content_block_start' &&
-        event.content_block.type === 'tool_use'
+        event.type === "content_block_start" &&
+        event.content_block.type === "tool_use"
       ) {
         controller.enqueue(
-          sseEvent('tool_use', {
+          sseEvent("tool_use", {
             id: event.content_block.id,
             name: event.content_block.name,
             input: {},
@@ -628,7 +745,7 @@ export function handleMessage(
       break;
     }
 
-    case 'assistant': {
+    case "assistant": {
       // Full assistant message — capture text but do NOT emit it.
       // Text deltas are already streamed via stream_event above; emitting
       // the full text block here would duplicate the entire response.
@@ -638,11 +755,12 @@ export function handleMessage(
       // CLI returned as assistant text without prior streaming deltas.
       if (msg.message?.content) {
         for (const block of msg.message.content) {
-          if (block.type === 'text' && block.text) {
-            state.lastAssistantText += (state.lastAssistantText ? '\n' : '') + block.text;
-          } else if (block.type === 'tool_use') {
+          if (block.type === "text" && block.text) {
+            state.lastAssistantText +=
+              (state.lastAssistantText ? "\n" : "") + block.text;
+          } else if (block.type === "tool_use") {
             controller.enqueue(
-              sseEvent('tool_use', {
+              sseEvent("tool_use", {
                 id: block.id,
                 name: block.name,
                 input: block.input,
@@ -654,18 +772,28 @@ export function handleMessage(
       break;
     }
 
-    case 'user': {
+    case "user": {
       // User messages contain tool_result blocks from completed tool calls
       const content = msg.message?.content;
       if (Array.isArray(content)) {
         for (const block of content) {
-          if (typeof block === 'object' && block !== null && 'type' in block && block.type === 'tool_result') {
-            const rb = block as { tool_use_id: string; content?: unknown; is_error?: boolean };
-            const text = typeof rb.content === 'string'
-              ? rb.content
-              : JSON.stringify(rb.content ?? '');
+          if (
+            typeof block === "object" &&
+            block !== null &&
+            "type" in block &&
+            block.type === "tool_result"
+          ) {
+            const rb = block as {
+              tool_use_id: string;
+              content?: unknown;
+              is_error?: boolean;
+            };
+            const text =
+              typeof rb.content === "string"
+                ? rb.content
+                : JSON.stringify(rb.content ?? "");
             controller.enqueue(
-              sseEvent('tool_result', {
+              sseEvent("tool_result", {
                 tool_use_id: rb.tool_use_id,
                 content: text,
                 is_error: rb.is_error || false,
@@ -677,18 +805,19 @@ export function handleMessage(
       break;
     }
 
-    case 'result': {
+    case "result": {
       state.hasReceivedResult = true;
-      if (msg.subtype === 'success') {
+      if (msg.subtype === "success") {
         controller.enqueue(
-          sseEvent('result', {
+          sseEvent("result", {
             session_id: msg.session_id,
             is_error: msg.is_error,
             usage: {
               input_tokens: msg.usage.input_tokens,
               output_tokens: msg.usage.output_tokens,
               cache_read_input_tokens: msg.usage.cache_read_input_tokens ?? 0,
-              cache_creation_input_tokens: msg.usage.cache_creation_input_tokens ?? 0,
+              cache_creation_input_tokens:
+                msg.usage.cache_creation_input_tokens ?? 0,
               cost_usd: msg.total_cost_usd,
             },
           }),
@@ -696,18 +825,18 @@ export function handleMessage(
       } else {
         // Error result from SDK (distinct from transport errors in catch)
         const errors =
-          'errors' in msg && Array.isArray(msg.errors)
-            ? msg.errors.join('; ')
-            : 'Unknown error';
-        controller.enqueue(sseEvent('error', errors));
+          "errors" in msg && Array.isArray(msg.errors)
+            ? msg.errors.join("; ")
+            : "Unknown error";
+        controller.enqueue(sseEvent("error", errors));
       }
       break;
     }
 
-    case 'system': {
-      if (msg.subtype === 'init') {
+    case "system": {
+      if (msg.subtype === "init") {
         controller.enqueue(
-          sseEvent('status', {
+          sseEvent("status", {
             session_id: msg.session_id,
             model: msg.model,
           }),

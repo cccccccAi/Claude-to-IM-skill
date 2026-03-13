@@ -28,7 +28,7 @@ Which channels to enable? telegram,discord
 Enter Telegram bot token: <your-token>
 Enter Discord bot token: <your-token>
 Default working directory [/current/dir]: /Users/me/projects
-Model [claude-sonnet-4-20250514]:
+Model []:
 Mode [code]:
 
 Validating tokens...
@@ -69,6 +69,7 @@ Shows whether the daemon is running and basic health information.
 ```
 
 Output includes:
+
 - Running/stopped state
 - PID (if running)
 - Uptime
@@ -109,6 +110,7 @@ Runs diagnostic checks and reports issues.
 ```
 
 Checks performed:
+
 - Node.js version (>= 20 required)
 - Claude Code CLI availability
 - Config file exists and has correct permissions
@@ -121,6 +123,7 @@ Checks performed:
 ### QQ notes
 
 QQ currently supports **C2C private chat only**:
+
 - No inline approval buttons — permissions use text `/perm ...` commands
 - No streaming preview
 - Image inbound only (no image replies)

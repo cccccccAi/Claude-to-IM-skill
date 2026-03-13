@@ -130,12 +130,17 @@ case "${1:-help}" in
       EXISTING_PID=$(read_pid)
       echo "Bridge already running${EXISTING_PID:+ (PID: $EXISTING_PID)}"
       cat "$STATUS_FILE" 2>/dev/null
-      exit 1
+      exit 0
     fi
 
     # Source config.env BEFORE clean_env so that CTI_ANTHROPIC_PASSTHROUGH
     # and other CTI_* flags are available when clean_env checks them.
-    [ -f "$CTI_HOME/config.env" ] && set -a && source "$CTI_HOME/config.env" && set +a
+    if [ -f "$CTI_HOME/config.env" ]; then
+      set -a
+      # shellcheck source=/dev/null
+      source "$CTI_HOME/config.env" || true
+      set +a
+    fi
 
     clean_env
     echo "Starting bridge..."
@@ -216,7 +221,7 @@ case "${1:-help}" in
 
   logs)
     N="${2:-50}"
-    tail -n "$N" "$LOG_FILE" 2>/dev/null | sed -E 's/(token|secret|password)(["\\x27]?\s*[:=]\s*["\\x27]?)[^ "]+/\1\2*****/gi'
+    tail -n "$N" "$LOG_FILE" 2>/dev/null | sed -E "s/(token|secret|password)([\"']?[[:space:]]*[:=][[:space:]]*[\"']?)[^ \"]+/\1\2*****/gi"
     ;;
 
   *)

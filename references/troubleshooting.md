@@ -13,6 +13,7 @@
 5. Check logs for startup errors: `/claude-to-im logs`
 
 **Common causes**:
+
 - Missing or invalid config.env -- run `/claude-to-im setup`
 - Node.js not found or wrong version -- install Node.js >= 20
 - Port or resource conflict -- check if another instance is running with `/claude-to-im status`
@@ -32,13 +33,16 @@
 
 ## Permission timeout
 
-**Symptoms**: Claude Code session starts but times out waiting for tool approval.
+**Symptoms**: Claude Code responds but tool calls (file edits, shell commands) time out after 5 minutes.
+
+**How it works**: When Claude wants to use a tool, the bridge sends **Allow / Deny** buttons to your IM chat (Telegram/Discord) or a text `/perm` prompt (Feishu/QQ). If you don't respond within 5 minutes, the tool call is automatically denied.
 
 **Steps**:
 
-1. The bridge runs Claude Code in non-interactive mode; ensure your Claude Code configuration allows the necessary tools
-2. Consider using `--allowedTools` in your configuration to pre-approve common tools
-3. Check network connectivity if the timeout occurs during API calls
+1. Check your IM app — there should be a permission prompt waiting for your response
+2. If you see frequent timeouts you missed, consider setting `CTI_AUTO_APPROVE=true` in `~/.claude-to-im/config.env` (only recommended in trusted, access-controlled environments)
+3. For Feishu long-connection mode (no webhook), auto-approve may be needed since inline buttons are not supported
+4. If the permission prompt never appears in your chat, check logs (`/claude-to-im logs`) for `permission_request` events — the bridge may have failed to send the message
 
 ## High memory usage
 
