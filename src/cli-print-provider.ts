@@ -132,6 +132,7 @@ export class CLIPrintProvider implements LLMProvider {
             const MAX_STDERR = 4096;
             let stderrBuf = "";
             let hasResult = false;
+            let sessionNotified = false;
             // Buffer for incomplete NDJSON lines
             let lineBuf = "";
             const decoder = new StringDecoder("utf-8");
@@ -159,7 +160,25 @@ export class CLIPrintProvider implements LLMProvider {
                   case "text":
                     controller.enqueue(sseEvent("text", action.text));
                     break;
-                  case "status":
+                  case "status": {
+                    // Notify user once when a new session starts (no prior session,
+                    // or session changed from what was requested via --resume).
+                    if (!sessionNotified) {
+                      sessionNotified = true;
+                      const isNew = !params.sdkSessionId;
+                      const isSwitched =
+                        params.sdkSessionId &&
+                        action.sessionId !== params.sdkSessionId;
+                      if (isNew || isSwitched) {
+                        const short = action.sessionId.slice(0, 8);
+                        const label = isSwitched
+                          ? "⚠️ 会话已切换"
+                          : "🔗 新会话";
+                        controller.enqueue(
+                          sseEvent("text", `${label}（ID: \`${short}\`）\n\n`),
+                        );
+                      }
+                    }
                     controller.enqueue(
                       sseEvent("status", {
                         session_id: action.sessionId,
@@ -167,6 +186,7 @@ export class CLIPrintProvider implements LLMProvider {
                       }),
                     );
                     break;
+                  }
                   case "result":
                     hasResult = true;
                     controller.enqueue(
