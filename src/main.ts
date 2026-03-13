@@ -57,7 +57,12 @@ async function resolveProvider(
       process.exit(1);
     }
     console.log(`[claude-to-im] Using Claude CLI (--print mode): ${cliPath}`);
-    return new CLIPrintProvider(cliPath);
+    if (config.dangerouslySkipPermissions) {
+      console.warn(
+        "[claude-to-im] WARNING: dangerously-skip-permissions enabled — all tool permission checks bypassed",
+      );
+    }
+    return new CLIPrintProvider(cliPath, config.dangerouslySkipPermissions);
   }
 
   if (runtime === "auto") {

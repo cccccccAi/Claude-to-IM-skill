@@ -29,6 +29,7 @@ export function buildCliArgs(params: {
   prompt: string;
   sdkSessionId?: string;
   model?: string;
+  dangerouslySkipPermissions?: boolean;
 }): string[] {
   const args = [
     "--print",
@@ -37,6 +38,9 @@ export function buildCliArgs(params: {
     "--verbose",
     "--include-partial-messages",
   ];
+  if (params.dangerouslySkipPermissions) {
+    args.push("--dangerously-skip-permissions");
+  }
   if (params.sdkSessionId) {
     args.push("--resume", params.sdkSessionId);
   }
@@ -49,13 +53,16 @@ export function buildCliArgs(params: {
 
 export class CLIPrintProvider implements LLMProvider {
   private cliPath: string;
+  private dangerouslySkipPermissions: boolean;
 
-  constructor(cliPath?: string) {
+  constructor(cliPath?: string, dangerouslySkipPermissions = false) {
     this.cliPath = cliPath ?? resolveClaudeCliPath() ?? "claude";
+    this.dangerouslySkipPermissions = dangerouslySkipPermissions;
   }
 
   streamChat(params: StreamChatParams): ReadableStream<string> {
     const cliPath = this.cliPath;
+    const dangerouslySkipPermissions = this.dangerouslySkipPermissions;
     const env = buildSubprocessEnv();
 
     return new ReadableStream({
@@ -66,6 +73,7 @@ export class CLIPrintProvider implements LLMProvider {
               prompt: params.prompt,
               sdkSessionId: params.sdkSessionId,
               model: params.model,
+              dangerouslySkipPermissions,
             });
 
             const resumeInfo = params.sdkSessionId

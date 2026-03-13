@@ -30,6 +30,8 @@ export interface Config {
   qqMaxImageSize?: number;
   // Auto-approve all tool permission requests without user confirmation
   autoApprove?: boolean;
+  // Skip all permission checks — equivalent to --dangerously-skip-permissions in CLI
+  dangerouslySkipPermissions?: boolean;
 }
 
 export const CTI_HOME =
@@ -108,6 +110,8 @@ export function loadConfig(): Config {
       ? Number(env.get("CTI_QQ_MAX_IMAGE_SIZE"))
       : undefined,
     autoApprove: env.get("CTI_AUTO_APPROVE") === "true",
+    dangerouslySkipPermissions:
+      env.get("CTI_DANGEROUSLY_SKIP_PERMISSIONS") === "true",
   };
 }
 
@@ -166,6 +170,8 @@ export function saveConfig(config: Config): void {
       "CTI_QQ_MAX_IMAGE_SIZE",
       String(config.qqMaxImageSize),
     );
+  if (config.dangerouslySkipPermissions)
+    out += formatEnvLine("CTI_DANGEROUSLY_SKIP_PERMISSIONS", "true");
 
   fs.mkdirSync(CTI_HOME, { recursive: true });
   const tmpPath = CONFIG_PATH + ".tmp";

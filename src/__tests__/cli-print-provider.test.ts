@@ -40,4 +40,30 @@ describe("buildCliArgs", () => {
     const args = buildCliArgs({ prompt: "hello", sdkSessionId: undefined });
     assert.ok(!args.includes("--resume"));
   });
+
+  it("adds --dangerously-skip-permissions when flag is true", () => {
+    const args = buildCliArgs({
+      prompt: "hello",
+      dangerouslySkipPermissions: true,
+    });
+    assert.ok(args.includes("--dangerously-skip-permissions"));
+  });
+
+  it("does not add --dangerously-skip-permissions by default", () => {
+    const args = buildCliArgs({ prompt: "hello" });
+    assert.ok(!args.includes("--dangerously-skip-permissions"));
+  });
+
+  it("places --dangerously-skip-permissions before --resume and prompt", () => {
+    const args = buildCliArgs({
+      prompt: "hello",
+      sdkSessionId: "sess-abc",
+      dangerouslySkipPermissions: true,
+    });
+    const skipIdx = args.indexOf("--dangerously-skip-permissions");
+    const resumeIdx = args.indexOf("--resume");
+    const promptIdx = args.indexOf("hello");
+    assert.ok(skipIdx < resumeIdx);
+    assert.ok(skipIdx < promptIdx);
+  });
 });
