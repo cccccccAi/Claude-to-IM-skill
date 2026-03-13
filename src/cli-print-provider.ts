@@ -20,9 +20,16 @@ import type {
   LLMProvider,
   StreamChatParams,
 } from "claude-to-im/src/lib/bridge/host.js";
-import { buildSubprocessEnv, resolveClaudeCliPath } from "./llm-provider.js";
+import {
+  buildSubprocessEnv,
+  resolveClaudeCliPath,
+  classifyAuthError,
+} from "./llm-provider.js";
 import { sseEvent } from "./sse-utils.js";
 import { parseLine } from "./cli-print-parser.js";
+
+/** Default request timeout in milliseconds (3 minutes). */
+const DEFAULT_TIMEOUT_MS = 3 * 60 * 1000;
 
 /** Build CLI arguments for `claude --print` with stream-json output. */
 export function buildCliArgs(params: {
@@ -54,20 +61,46 @@ export function buildCliArgs(params: {
 export class CLIPrintProvider implements LLMProvider {
   private cliPath: string;
   private dangerouslySkipPermissions: boolean;
+  private timeoutMs: number;
 
-  constructor(cliPath?: string, dangerouslySkipPermissions = false) {
+  constructor(
+    cliPath?: string,
+    dangerouslySkipPermissions = false,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+  ) {
     this.cliPath = cliPath ?? resolveClaudeCliPath() ?? "claude";
     this.dangerouslySkipPermissions = dangerouslySkipPermissions;
+    this.timeoutMs = timeoutMs;
   }
 
   streamChat(params: StreamChatParams): ReadableStream<string> {
     const cliPath = this.cliPath;
     const dangerouslySkipPermissions = this.dangerouslySkipPermissions;
     const env = buildSubprocessEnv();
+    const timeoutMs = this.timeoutMs;
 
     return new ReadableStream({
       start(controller) {
         (async () => {
+          let timedOut = false;
+          let proc: ReturnType<typeof spawn> | undefined;
+
+          // Timeout: kill the subprocess and report a friendly error
+          const timeoutHandle = setTimeout(() => {
+            timedOut = true;
+            proc?.kill("SIGTERM");
+            console.warn(
+              `[cli-print-provider] Request timed out after ${timeoutMs / 1000}s`,
+            );
+            controller.enqueue(
+              sseEvent(
+                "error",
+                `Request timed out after ${timeoutMs / 1000} seconds. The task may still be running in the background.`,
+              ),
+            );
+            controller.close();
+          }, timeoutMs);
+
           try {
             const args = buildCliArgs({
               prompt: params.prompt,
@@ -83,7 +116,7 @@ export class CLIPrintProvider implements LLMProvider {
               `[cli-print-provider] Spawning: ${cliPath} --print --output-format stream-json${resumeInfo}`,
             );
 
-            const proc = spawn(cliPath, args, {
+            proc = spawn(cliPath, args, {
               env,
               stdio: ["pipe", "pipe", "pipe"],
             });
@@ -148,9 +181,13 @@ export class CLIPrintProvider implements LLMProvider {
             });
 
             const code = await new Promise<number>((resolve, reject) => {
-              proc.on("exit", (c) => resolve(c ?? 0));
-              proc.on("error", reject);
+              proc!.on("exit", (c) => resolve(c ?? 0));
+              proc!.on("error", reject);
             });
+
+            // Don't process anything further if we already timed out
+            if (timedOut) return;
+            clearTimeout(timeoutHandle);
 
             // Flush remaining buffer
             const remaining = (lineBuf + decoder.end()).trim();
@@ -171,14 +208,26 @@ export class CLIPrintProvider implements LLMProvider {
             }
 
             if (code !== 0 && !hasResult) {
-              const errMsg =
-                stderrBuf.trim() || `claude exited with code ${code}`;
+              const combined = [stderrBuf.trim(), ""].join("\n");
+              const authKind = classifyAuthError(combined);
+              let errMsg: string;
+              if (authKind === "cli") {
+                errMsg =
+                  "Claude CLI is not logged in. Run `claude auth login` on your server, then restart the bridge.";
+              } else if (authKind === "api") {
+                errMsg =
+                  "API credential error. Check ANTHROPIC_API_KEY in config.env, or verify your subscription has access.";
+              } else {
+                errMsg = stderrBuf.trim() || `claude exited with code ${code}`;
+              }
               console.error("[cli-print-provider] Error:", errMsg);
               controller.enqueue(sseEvent("error", errMsg));
             }
 
             controller.close();
           } catch (err) {
+            if (timedOut) return;
+            clearTimeout(timeoutHandle);
             const message = err instanceof Error ? err.message : String(err);
             console.error("[cli-print-provider] Spawn error:", message);
             controller.enqueue(sseEvent("error", message));
