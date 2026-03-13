@@ -103,7 +103,7 @@ export class CLIPrintProvider implements LLMProvider {
           // computeSdkSessionUpdate returning '' → session cleared).
           // bridge-manager skips error display when responseText is non-empty,
           // so the user only sees the confirmation text.
-          if (params.prompt.trim() === "/new") {
+          if (["/new", "/n"].includes(params.prompt.trim())) {
             controller.enqueue(
               sseEvent("text", "✅ 会话已重置，发下一条消息开始新对话"),
             );
@@ -117,7 +117,7 @@ export class CLIPrintProvider implements LLMProvider {
           // the store to the previous session ID. No "error" event is sent,
           // so computeSdkSessionUpdate sees hasError=false + no result event
           // → returns null (no-op) → the status-event write is the final state.
-          if (params.prompt.trim() === "/back") {
+          if (["/back", "/b"].includes(params.prompt.trim())) {
             if (!self.previousSessionId) {
               controller.enqueue(
                 sseEvent(
@@ -144,7 +144,9 @@ export class CLIPrintProvider implements LLMProvider {
           }
 
           // ── /resume <id> command: switch to any arbitrary session ID ──
-          const resumeMatch = params.prompt.trim().match(/^\/resume\s+(\S+)$/);
+          const resumeMatch = params.prompt
+            .trim()
+            .match(/^\/(?:resume|r)\s+(\S+)$/);
           if (resumeMatch) {
             const targetId = resumeMatch[1];
             const short = targetId.slice(0, 8);
