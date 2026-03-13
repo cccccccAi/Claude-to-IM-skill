@@ -85,19 +85,29 @@ export class CLIPrintProvider implements LLMProvider {
         (async () => {
           let timedOut = false;
           let proc: ReturnType<typeof spawn> | undefined;
+          // Track whether any text has been streamed to the user.
+          // Used by the timeout handler to append a truncation marker (▌)
+          // when the response was cut short mid-stream.
+          let hasText = false;
 
-          // Timeout: kill the subprocess and close the stream silently.
-          // We do NOT emit any message to the user — they can send a follow-up
-          // message to resume from the same session naturally.
-          // The stream is closed without an "error" event so hasError stays false,
-          // which means computeSdkSessionUpdate preserves sdkSessionId for the
-          // next --resume call. Silent close = session preserved = seamless recovery.
+          // Timeout: kill the subprocess and close the stream.
+          // - No alarming error message is sent — the user can simply send
+          //   their next message to continue from the same session.
+          // - If partial text was already streamed, append ▌ so the user
+          //   knows the response was cut short and can ask to "继续".
+          // - Stream is closed WITHOUT an "error" event so hasError stays
+          //   false → computeSdkSessionUpdate preserves sdkSessionId →
+          //   next message auto-resumes via --resume.
           const timeoutHandle = setTimeout(() => {
             timedOut = true;
             proc?.kill("SIGTERM");
             console.warn(
-              `[cli-print-provider] Request timed out after ${timeoutMs / 1000}s — session preserved, closing stream silently`,
+              `[cli-print-provider] Request timed out after ${timeoutMs / 1000}s — session preserved`,
             );
+            if (hasText) {
+              // Append truncation marker so user knows to say "继续"
+              controller.enqueue(sseEvent("text", " ▌"));
+            }
             controller.close();
           }, timeoutMs);
 
@@ -153,6 +163,7 @@ export class CLIPrintProvider implements LLMProvider {
                 const action = parseLine(line);
                 switch (action.kind) {
                   case "text":
+                    hasText = true;
                     controller.enqueue(sseEvent("text", action.text));
                     break;
                   case "status": {
@@ -193,7 +204,11 @@ export class CLIPrintProvider implements LLMProvider {
                     );
                     break;
                   case "error":
-                    controller.enqueue(sseEvent("error", action.message));
+                    // Send inline CLI errors as "text" (not "error") to preserve
+                    // the session — these are API-level errors, not session faults.
+                    controller.enqueue(
+                      sseEvent("text", `❌ ${action.message}`),
+                    );
                     break;
                   case "skip":
                     break;
@@ -215,6 +230,7 @@ export class CLIPrintProvider implements LLMProvider {
             if (remaining) {
               const action = parseLine(remaining);
               if (action.kind === "text") {
+                hasText = true;
                 controller.enqueue(sseEvent("text", action.text));
               } else if (action.kind === "result") {
                 hasResult = true;
@@ -229,29 +245,45 @@ export class CLIPrintProvider implements LLMProvider {
             }
 
             if (code !== 0 && !hasResult) {
+              // Send as "text" (not "error") to preserve sdkSessionId.
+              // Auth/network/process errors are all transient — the Claude
+              // conversation context is still valid. Clearing the session here
+              // would force a brand-new session on the next message, losing all
+              // conversation history. Instead, display the error as a message and
+              // let the user fix the underlying issue then retry.
               const combined = [stderrBuf.trim(), ""].join("\n");
               const authKind = classifyAuthError(combined);
               let errMsg: string;
               if (authKind === "cli") {
                 errMsg =
-                  "Claude CLI is not logged in. Run `claude auth login` on your server, then restart the bridge.";
+                  "❌ Claude CLI 未登录，请在终端执行 `claude auth login` 后重发消息。（会话已保留）";
               } else if (authKind === "api") {
                 errMsg =
-                  "API credential error. Check ANTHROPIC_API_KEY in config.env, or verify your subscription has access.";
+                  "❌ API 凭证错误，请检查 config.env 中的 ANTHROPIC_API_KEY。（会话已保留）";
               } else {
-                errMsg = stderrBuf.trim() || `claude exited with code ${code}`;
+                errMsg = `❌ ${stderrBuf.trim() || `claude exited with code ${code}`}（发下一条消息可继续会话）`;
               }
-              console.error("[cli-print-provider] Error:", errMsg);
-              controller.enqueue(sseEvent("error", errMsg));
+              console.error(
+                "[cli-print-provider] Error (session preserved):",
+                errMsg,
+              );
+              controller.enqueue(sseEvent("text", errMsg));
             }
 
             controller.close();
           } catch (err) {
             if (timedOut) return;
             clearTimeout(timeoutHandle);
+            // Spawn-level errors (e.g. claude binary not found) — also send as
+            // "text" to preserve the session for the next retry.
             const message = err instanceof Error ? err.message : String(err);
-            console.error("[cli-print-provider] Spawn error:", message);
-            controller.enqueue(sseEvent("error", message));
+            console.error(
+              "[cli-print-provider] Spawn error (session preserved):",
+              message,
+            );
+            controller.enqueue(
+              sseEvent("text", `❌ 启动 Claude 失败：${message}`),
+            );
             controller.close();
           }
         })();
