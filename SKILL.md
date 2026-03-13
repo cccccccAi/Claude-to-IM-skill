@@ -109,6 +109,7 @@ Ask for runtime, default working directory, model, and mode:
   - `auto` — tries Claude first, falls back to Codex if Claude CLI not found
   - `cli-print` — spawns `claude --print` directly; works with Claude Code OAuth subscription without API key. Trade-off: no session persistence, no tool use (chat only)
 - **Working Directory**: default `$CWD`
+- **API Base URL** (optional, `claude`/`auto`/`cli-print` runtime only): Ask "Do you use a third-party Claude API proxy? If yes, enter the base URL (e.g. https://your-proxy.com/v1), otherwise press Enter to skip." Write as `ANTHROPIC_BASE_URL=<value>` in config.env if provided. Automatically forwarded to the Claude CLI subprocess.
 - **Model** (optional): Leave blank to inherit the runtime's own default model. If the user wants to override, ask them to enter a model name. Do NOT hardcode or suggest specific model names — the available models change over time.
 - **Mode**: `code` (default), `plan`, `ask`
 
