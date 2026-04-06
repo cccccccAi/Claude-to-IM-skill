@@ -758,6 +758,10 @@ export function handleMessage(
           if (block.type === "text" && block.text) {
             state.lastAssistantText +=
               (state.lastAssistantText ? "\n" : "") + block.text;
+            // Emit text if no streaming deltas were received (short responses)
+            if (!state.hasStreamedText) {
+              controller.enqueue(sseEvent("text", block.text));
+            }
           } else if (block.type === "tool_use") {
             controller.enqueue(
               sseEvent("tool_use", {

@@ -79,6 +79,13 @@ build_env_dict() {
       ;;
   esac
 
+  # Forward proxy settings (required for OAuth token refresh behind proxy)
+  for var in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy; do
+    local val="${!var:-}"
+    [ -z "$val" ] && continue
+    dict+="${indent}<key>${var}</key>\n${indent}<string>${val}</string>\n"
+  done
+
   printf '%b' "$dict"
 }
 
